@@ -160,17 +160,31 @@ void rendermem(VM_memory memory) {
 	}
 }
 
+static void print_usage(const char* prog) {
+    std::cout << "Usage: " << prog << " [options] <input.bin>" << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -h, --help    Show this help and exit" << std::endl;
+}
+
 int main(int argc, char* argv[]) {
     std::cout << "R3 emulator" << std::endl;
     std::cout << "Written by Justus Wolff in very late 2025-2026" << std::endl << "With help from LBPHacker, to fix alot of arithmetic bugs, who also made the original R3" << std::endl << "Also credit to siraben due to finding bugs and patching them by implementing haskell for the R3." << std::endl;
     std::cout << "Also, if you read this, I might do an complete rewrite soon since this is quite the mess." << std::endl;
+
 	argh::parser cmdl(argc, argv);
 
-    if (!cmdl(1)) {
-        std::cout << "Usage: input.bin" << std::endl;
+    if (cmdl[{ "-h", "--help" }]) {
+        print_usage(argv[0]);
+        return 0;
+    }
+
+    if (cmdl.size() < 2) {
+        print_usage(argv[0]);
         return 1;
     }
-    if (!std::filesystem::exists(cmdl[1])) {
+
+    const std::string input_path = cmdl[1];
+    if (!std::filesystem::exists(input_path)) {
         std::cout << "File doesnt exist!" << std::endl;
         return 2;
     }
@@ -178,7 +192,7 @@ int main(int argc, char* argv[]) {
     VM_vminstance instance = VM_newinstance(CONF_memrows, CONF_coreamount, (uint8_t[]){2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
     memset(instance.memory.content, 0x00, VM_getsize(CONF_memrows)*sizeof(VM_word));
 
-    std::ifstream file(cmdl[1], std::ios_base::binary);
+    std::ifstream file(input_path, std::ios_base::binary);
     file.seekg(0, std::ios::end);
     size_t length = file.tellg();
     file.seekg(0, std::ios::beg);
