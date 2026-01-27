@@ -1,24 +1,26 @@
 /// Patch special word values to zero.
 /// Values 0x00000000, 0x40000000, 0x80000000, 0xC0000000 all map to 0.
+/// These are exactly the values with lower 30 bits all zero.
+#[inline(always)]
 pub fn patch_word(w: u32) -> u32 {
-    match w {
-        0x00000000 | 0x40000000 | 0x80000000 | 0xC0000000 => 0,
-        _ => w,
-    }
+    if w & 0x3FFFFFFF == 0 { 0 } else { w }
 }
 
 /// Mask a word to the lower 16 bits (ALU word width).
+#[inline(always)]
 pub fn alu_word_limit(w: u32) -> u32 {
     w & 0xFFFF
 }
 
 /// Read a single flag bit.
 /// Index: 0=Zf, 1=Sf, 2=Cf, 3=Of.
+#[inline(always)]
 pub fn get_flag(flags: u8, index: u8) -> bool {
     (flags >> index) & 1 != 0
 }
 
 /// Set a single flag bit.
+#[inline(always)]
 pub fn set_flag(flags: &mut u8, index: u8, state: bool) {
     if state {
         *flags |= 1 << index;
@@ -27,6 +29,7 @@ pub fn set_flag(flags: &mut u8, index: u8, state: bool) {
     }
 }
 
+#[inline(always)]
 fn add_common(a: u32, b: u32, flags: &mut u8, carry_in: u8, update: bool) -> u32 {
     let a = alu_word_limit(patch_word(a));
     let b = alu_word_limit(patch_word(b));
@@ -44,14 +47,17 @@ fn add_common(a: u32, b: u32, flags: &mut u8, carry_in: u8, update: bool) -> u32
     alu_word_limit(out)
 }
 
+#[inline]
 pub fn add(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     add_common(a, b, flags, 0, update)
 }
 
+#[inline]
 pub fn adc(a: u32, b: u32, flags: &mut u8, carry_in: u8, update: bool) -> u32 {
     add_common(a, b, flags, carry_in, update)
 }
 
+#[inline]
 pub fn sub(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     let out = add_common(a, !b, flags, 1, update);
     if update {
@@ -61,6 +67,7 @@ pub fn sub(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     out
 }
 
+#[inline]
 pub fn sbb(a: u32, b: u32, flags: &mut u8, carry_in: bool, update: bool) -> u32 {
     let out = add_common(a, !b, flags, if carry_in { 0 } else { 1 }, update);
     if update {
@@ -70,18 +77,21 @@ pub fn sbb(a: u32, b: u32, flags: &mut u8, carry_in: bool, update: bool) -> u32 
     out
 }
 
+#[inline]
 pub fn mul(a: u32, b: u32) -> u32 {
     let a = alu_word_limit(patch_word(a));
     let b = alu_word_limit(patch_word(b));
     (a.wrapping_mul(b)) & 0xFFFF
 }
 
+#[inline]
 pub fn mulh(a: u32, b: u32) -> u32 {
     let a = alu_word_limit(patch_word(a));
     let b = alu_word_limit(patch_word(b));
     (a.wrapping_mul(b)) >> 16
 }
 
+#[inline]
 pub fn muls(a: u32, b: u32) -> u32 {
     let a = alu_word_limit(patch_word(a)) as u16 as i16 as i32;
     let b = alu_word_limit(patch_word(b)) as u16 as i16 as i32;
@@ -89,6 +99,7 @@ pub fn muls(a: u32, b: u32) -> u32 {
     (out as u32) >> 16
 }
 
+#[inline]
 pub fn mulx(a: u32, b: u32) -> u32 {
     let a = alu_word_limit(patch_word(a));
     let b = (alu_word_limit(patch_word(b)) as u16 as i16 as i32) as u32;
@@ -98,6 +109,7 @@ pub fn mulx(a: u32, b: u32) -> u32 {
 
 /// Shift left. Note: intentionally does NOT mask result to 16 bits,
 /// matching the original C implementation behavior.
+#[inline]
 pub fn shl(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
     let target = patch_word(target);
     let pos = patch_word(pos) & 0b1111;
@@ -112,6 +124,7 @@ pub fn shl(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
 
 /// Shift right. Note: intentionally does NOT mask target to 16 bits
 /// before shifting, matching the original C implementation behavior.
+#[inline]
 pub fn shr(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
     let target = patch_word(target);
     let pos = patch_word(pos) & 0b1111;
@@ -124,6 +137,7 @@ pub fn shr(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
     out
 }
 
+#[inline]
 pub fn and(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     let a = patch_word(a);
     let b = patch_word(b);
@@ -136,6 +150,7 @@ pub fn and(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     out
 }
 
+#[inline]
 pub fn or(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     let a = patch_word(a);
     let b = patch_word(b);
@@ -148,6 +163,7 @@ pub fn or(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     out
 }
 
+#[inline]
 pub fn xor(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     let a = patch_word(a);
     let b = patch_word(b);
@@ -160,27 +176,26 @@ pub fn xor(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
     out
 }
 
-/// Generate the 16-entry condition table from the current flags.
-pub fn generate_cond_table(flags: u8) -> [bool; 16] {
+/// Evaluate a single jump condition directly from flags.
+#[inline(always)]
+pub fn eval_condition(flags: u8, index: usize) -> bool {
     let cf = get_flag(flags, 2);
     let zf = get_flag(flags, 0);
     let sf = get_flag(flags, 1);
     let of = get_flag(flags, 3);
 
-    let mut table = [false; 16];
-    table[0] = true;            // always
-    table[1] = cf || zf;        // below/equal
-    table[2] = sf ^ of;         // less
-    table[3] = zf || (sf ^ of); // less/equal
-    table[4] = sf;              // sign
-    table[5] = zf;              // zero
-    table[6] = of;              // overflow
-    table[7] = cf;              // carry
-    // inverted conditions
-    for i in 8..16 {
-        table[i] = !table[i - 8];
-    }
-    table
+    let base = match index & 7 {
+        0 => true,            // always
+        1 => cf || zf,        // below/equal
+        2 => sf ^ of,         // less
+        3 => zf || (sf ^ of), // less/equal
+        4 => sf,              // sign
+        5 => zf,              // zero
+        6 => of,              // overflow
+        7 => cf,              // carry
+        _ => unreachable!(),
+    };
+    if index < 8 { base } else { !base }
 }
 
 #[cfg(test)]

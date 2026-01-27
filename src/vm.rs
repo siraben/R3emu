@@ -28,7 +28,7 @@ pub struct Trace {
 
 pub struct Vm {
     pub bus: Bus,
-    regs: [u32; 31],
+    regs: [u32; 32],
     flags: u8,
     pub ip: u32,
     pub halted: bool,
@@ -53,7 +53,7 @@ impl Vm {
         });
         Vm {
             bus,
-            regs: [0u32; 31],
+            regs: [0u32; 32],
             flags: 0,
             ip: 0,
             halted: false,
@@ -66,21 +66,20 @@ impl Vm {
         }
     }
 
+    #[inline(always)]
     fn read_reg(&self, index: u8) -> u32 {
-        if index == 0 || index > 31 {
-            0
-        } else {
-            self.regs[(index - 1) as usize]
-        }
+        self.regs[(index & 31) as usize]
     }
 
+    #[inline(always)]
     fn write_reg(&mut self, index: u8, val: u32) {
-        if index == 0 || index > 31 {
-            return;
+        let i = (index & 31) as usize;
+        if i != 0 {
+            self.regs[i] = patch_word(val);
         }
-        self.regs[(index - 1) as usize] = patch_word(val);
     }
 
+    #[inline(always)]
     fn handle_sch_mem(&mut self) {
         match self.sch_mode {
             SchMode::Load => {
@@ -139,10 +138,7 @@ impl Vm {
         // Record trace entry
         if let Some(ref mut trace) = self.trace {
             if trace.entries.len() < trace.max_size {
-                let psrc_val = self.regs.get((psrcreg.wrapping_sub(1)) as usize)
-                    .copied()
-                    .filter(|_| psrcreg >= 1 && psrcreg <= 31)
-                    .unwrap_or(0);
+                let psrc_val = self.regs[(psrcreg & 31) as usize];
                 trace.entries.push(TraceEntry {
                     instruction,
                     addr: self.ip,
@@ -270,8 +266,7 @@ impl Vm {
             }
             1 => {
                 // jmp
-                let cond_table = generate_cond_table(self.flags);
-                if cond_table[condindex] {
+                if eval_condition(self.flags, condindex) {
                     skip_ip_inc = true;
                     // Sync jumps only execute on the last core
                     if !sync || core_idx == self.cores.len() - 1 {
