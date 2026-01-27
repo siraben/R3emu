@@ -2,15 +2,16 @@
 Written by Justus Wolff in very late 2025.
 */
 #include <stdlib.h>
+#include <string.h>
 #include "arithmetic.h"
 #include "cores.h"
 #include "config.h"
 #include "memory.h"
 
-VM_vminstance VM_newinstance(uint8_t memsize, uint8_t coreamount, uint8_t* coretypes) {
+VM_vminstance VM_newinstance(uint8_t memsize, uint8_t coreamount, uint8_t* coretypes, uint16_t rowsize, uint8_t allowsmul, uint8_t maketracedump, uint64_t tracesize) {
     VM_vminstance out;
 
-    out.memory = VM_newmemory(memsize);
+    out.memory = VM_newmemory(memsize, rowsize);
     out.coreamount = coreamount;
     for (uint8_t i=0;i<coreamount;i++) {
         out.cores[i] = coretypes[i];
@@ -18,20 +19,36 @@ VM_vminstance VM_newinstance(uint8_t memsize, uint8_t coreamount, uint8_t* coret
     out.IP = 0;
     out.halted = 0;
     out.tracesize = 0;
+    out.allowsmul = allowsmul;
+    out.maketracedump = maketracedump;
+    out.maxtracesize = tracesize;
+
+    if (maketracedump) {
+        out.backtrace = (VM_word*)calloc(tracesize, sizeof(VM_word));
+        out.backtraceaddrs = (VM_word*)calloc(tracesize, sizeof(VM_word));
+        out.backtraceop = (VM_word(*)[3])calloc(tracesize, sizeof(VM_word[3]));
+    } else {
+        out.backtrace = NULL;
+        out.backtraceaddrs = NULL;
+        out.backtraceop = NULL;
+    }
 
     return out;
 }
 void VM_delinstance(VM_vminstance inst) {
     free(inst.memory.content);
+    free(inst.backtrace);
+    free(inst.backtraceaddrs);
+    free(inst.backtraceop);
 }
 void VM_execinstruction(VM_vminstance* _inst, uint8_t coreindex) {
     VM_vminstance inst = *_inst;
     // fetch instruction from memory
-    if (inst.IP > VM_getsize(inst.memory.rows)) {inst.IP = VM_nullword;} // reset IP
+    if (inst.IP > VM_getsize(inst.memory.rows, inst.memory.rowsize)) {inst.IP = VM_nullword;} // reset IP
 
     VM_word instruction = VM_memread(inst.memory, inst.IP);
 
-    if (CONF_maketracedump) {
+    if (inst.maketracedump) {
         inst.backtrace[inst.tracesize] = instruction;
         inst.backtraceaddrs[inst.tracesize] = inst.IP;
     }
@@ -50,7 +67,7 @@ void VM_execinstruction(VM_vminstance* _inst, uint8_t coreindex) {
 
     patchword((VM_word*)&ssrcreg);
 
-    if (CONF_maketracedump) {
+    if (inst.maketracedump) {
         inst.backtraceop[inst.tracesize][0] = destreg;
         inst.backtraceop[inst.tracesize][1] = readreg(&inst.regs, psrcreg);
         inst.backtraceop[inst.tracesize++][2] = ssrcreg;
@@ -102,13 +119,13 @@ void VM_execinstruction(VM_vminstance* _inst, uint8_t coreindex) {
         case 14: // mul or muls
             // check if core is multiply capable or else skip instruction.
             if (moi == 0) {
-                if ((coretype == 1 && VM_allowsmul) || coretype == 2) {
+                if ((coretype == 1 && inst.allowsmul) || coretype == 2) {
                     writereg(regs, destreg, VM_mul(readreg(regs, psrcreg), ssrcreg));
                 } else {
                     skipins = 1;
                 }
             } else {
-                if ((coretype == 1 && VM_allowsmul) || coretype == 2) {
+                if ((coretype == 1 && inst.allowsmul) || coretype == 2) {
                     writereg(regs, destreg, VM_muls(readreg(regs, psrcreg), ssrcreg));
                 } else {
                     skipins = 1;
@@ -118,13 +135,13 @@ void VM_execinstruction(VM_vminstance* _inst, uint8_t coreindex) {
         case 15: // mulh or mulx
             // check if core is multiply capable or else skip instruction.
             if (moi == 0) {
-                if ((coretype == 1 && VM_allowsmul) || coretype == 2) {
+                if ((coretype == 1 && inst.allowsmul) || coretype == 2) {
                     writereg(regs, destreg, VM_mulh(readreg(regs, psrcreg), ssrcreg));
                 } else {
                     skipins = 1;
                 }
             } else {
-                if ((coretype == 1 && VM_allowsmul) || coretype == 2) {
+                if ((coretype == 1 && inst.allowsmul) || coretype == 2) {
                     writereg(regs, destreg, VM_mulx(readreg(regs, psrcreg), ssrcreg));
                 } else {
                     skipins = 1;
@@ -174,7 +191,7 @@ void VM_execinstruction(VM_vminstance* _inst, uint8_t coreindex) {
                 }
             }
             break;
-        
+
     }
 
     if (!skipins) {

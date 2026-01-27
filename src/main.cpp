@@ -23,6 +23,7 @@ extern "C" {
 VM_keyboard* HOOK_keyboard;
 VM_term* HOOK_term;
 SDL_Renderer* renderer;
+uint8_t HOOK_haspixplot;
 
 VM_word hook_getkey(uint16_t) {
     return VM_getkey(HOOK_keyboard);
@@ -117,7 +118,7 @@ void hook_scrollprint(VM_word newval, uint16_t addr) {
     HOOK_term->cursor = column+(row<<5);
 }
 void hook_plotpix(VM_word newval, uint16_t addr) {
-    if (!CONF_haspixplot) {return;} // pixel plotter not available
+    if (!HOOK_haspixplot) {return;} // pixel plotter not available
 
     uint8_t colorindex = addr & 0b1111;
     uint8_t row = (newval>>8) & 0b11111111;
@@ -146,16 +147,16 @@ void calcmemcol(VM_word value, uint8_t* out) { // taken from an R2 emulator at h
 	out[1] = g;
 	out[2] = b;
 }
-void rendermem(VM_memory memory) {
-	for (uint64_t row=0;row<CONF_memrows;row++) {
+void rendermem(VM_memory memory, uint8_t memrows, uint8_t charsnv) {
+	for (uint64_t row=0;row<memrows;row++) {
 		for (uint64_t column=0;column<128;column++) {
 			VM_word val = VM_memread(memory, column+(128*row));
 			uint8_t color[3];
 			calcmemcol(val, color);
 			SDL_SetRenderDrawColor(renderer, color[0], color[1], color[2], 255);
-    		SDL_RenderDrawPoint(renderer, column, row+(8*CONF_charsnv));
-			//VM_setrawpix(HOOK_term, column, row+8*CONF_charsnv, renderer, color);
-			//VM_setpix(HOOK_term, column, row+8*CONF_charsnv, )
+    		SDL_RenderDrawPoint(renderer, column, row+(8*charsnv));
+			//VM_setrawpix(HOOK_term, column, row+8*charsnv, renderer, color);
+			//VM_setpix(HOOK_term, column, row+8*charsnv, )
 		}
 	}
 }
@@ -163,7 +164,20 @@ void rendermem(VM_memory memory) {
 static void print_usage(const char* prog) {
     std::cout << "Usage: " << prog << " [options] <input.bin>" << std::endl;
     std::cout << "Options:" << std::endl;
-    std::cout << "  -h, --help    Show this help and exit" << std::endl;
+    std::cout << "  -h, --help              Show this help and exit" << std::endl;
+    std::cout << "  --memrows N             Memory rows (default: " << DEFAULT_memrows << ")" << std::endl;
+    std::cout << "  --cores N               Number of cores (default: " << DEFAULT_coreamount << ")" << std::endl;
+    std::cout << "  --targetfps N           Target FPS (default: " << DEFAULT_targetfps << ")" << std::endl;
+    std::cout << "  --updxframes N          SDL update interval in frames (default: " << DEFAULT_updxframes << ")" << std::endl;
+    std::cout << "  --tracesize N           Trace buffer size (default: " << DEFAULT_tracesize << ")" << std::endl;
+    std::cout << "  --term-cols N           Terminal character columns (default: " << DEFAULT_charsnh << ")" << std::endl;
+    std::cout << "  --term-rows N           Terminal character rows (default: " << DEFAULT_charsnv << ")" << std::endl;
+    std::cout << "  --rowsize N             Memory row size in words (default: " << DEFAULT_rowsize << ")" << std::endl;
+    std::cout << "  --memdump               Dump memory after emulation" << std::endl;
+    std::cout << "  --tracedump             Enable execution trace dump" << std::endl;
+    std::cout << "  --no-fpslimiter         Disable FPS limiter" << std::endl;
+    std::cout << "  --no-smul               Disallow S-type core multiplication" << std::endl;
+    std::cout << "  --no-pixplot            Disable pixel plotting" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -189,24 +203,67 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    VM_vminstance instance = VM_newinstance(CONF_memrows, CONF_coreamount, (uint8_t[]){2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
-    memset(instance.memory.content, 0x00, VM_getsize(CONF_memrows)*sizeof(VM_word));
+    // Parse CLI options with defaults from config.h
+    int memrows;
+    cmdl("--memrows", DEFAULT_memrows) >> memrows;
+
+    int coreamount;
+    cmdl("--cores", DEFAULT_coreamount) >> coreamount;
+
+    int targetfps;
+    cmdl("--targetfps", DEFAULT_targetfps) >> targetfps;
+
+    int updxframes;
+    cmdl("--updxframes", DEFAULT_updxframes) >> updxframes;
+
+    uint64_t tracesize;
+    cmdl("--tracesize", DEFAULT_tracesize) >> tracesize;
+
+    int charsnh;
+    cmdl("--term-cols", DEFAULT_charsnh) >> charsnh;
+
+    int charsnv;
+    cmdl("--term-rows", DEFAULT_charsnv) >> charsnv;
+
+    int rowsize;
+    cmdl("--rowsize", DEFAULT_rowsize) >> rowsize;
+
+    bool memdump = cmdl["--memdump"];
+    bool tracedump = cmdl["--tracedump"];
+    bool fpslimiter = !cmdl["--no-fpslimiter"];
+    bool allowsmul = !cmdl["--no-smul"];
+    bool haspixplot = !cmdl["--no-pixplot"];
+
+    HOOK_haspixplot = haspixplot ? 1 : 0;
+
+    VM_vminstance instance = VM_newinstance(
+        (uint8_t)memrows,
+        (uint8_t)coreamount,
+        (uint8_t[]){2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
+        (uint16_t)rowsize,
+        allowsmul ? 1 : 0,
+        tracedump ? 1 : 0,
+        tracesize
+    );
+    uint16_t memsize_words = VM_getsize((uint8_t)memrows, (uint16_t)rowsize);
+    memset(instance.memory.content, 0x00, memsize_words*sizeof(VM_word));
 
     std::ifstream file(input_path, std::ios_base::binary);
     file.seekg(0, std::ios::end);
     size_t length = file.tellg();
     file.seekg(0, std::ios::beg);
-    if (length > VM_getsize(CONF_memrows)*sizeof(VM_word)) {
-        length = VM_getsize(CONF_memrows)*sizeof(VM_word);
+    if (length > memsize_words*sizeof(VM_word)) {
+        length = memsize_words*sizeof(VM_word);
     }
-    char buf[VM_getsize(CONF_memrows)*sizeof(VM_word)];
-	memset(buf, 0x00, VM_getsize(CONF_memrows)*sizeof(VM_word));
+    char* buf = new char[memsize_words*sizeof(VM_word)];
+	memset(buf, 0x00, memsize_words*sizeof(VM_word));
     file.read(buf, length);
     std::cout << "Reading into memory..." << std::endl;
-    memcpy(instance.memory.content, buf, VM_getsize(CONF_memrows)*sizeof(VM_word));
+    memcpy(instance.memory.content, buf, memsize_words*sizeof(VM_word));
+    delete[] buf;
 
     VM_keyboard keyboard = VM_newkeyboard();
-    VM_term terminal = VM_newterm();
+    VM_term terminal = VM_newterm((uint8_t)charsnh, (uint8_t)charsnv);
     HOOK_term = &terminal;
     HOOK_keyboard = &keyboard;
     uint16_t baseaddr = 0x9F80;
@@ -223,8 +280,8 @@ int main(int argc, char* argv[]) {
     VM_addwhook(&instance.memory, baseaddr, hook_scrollprint, 0x3F); // scrollprint
     VM_addwhook(&instance.memory, baseaddr+0x60, hook_plotpix, 0x1F); // plotpix
 
-    std::cout << "Target fps: " << CONF_targetfps << std::endl;
-    std::cout << "Target ips: " << CONF_targetfps*CONF_coreamount << std::endl;
+    std::cout << "Target fps: " << targetfps << std::endl;
+    std::cout << "Target ips: " << targetfps*coreamount << std::endl;
 
     SDL_Event event;
     SDL_Renderer* _renderer;
@@ -235,16 +292,16 @@ int main(int argc, char* argv[]) {
         std::cout << "Failed to create window! '" << SDL_GetError() << "'" << std::endl;
     }
     renderer = _renderer;
-    SDL_RenderSetLogicalSize(renderer, 8*CONF_charsnh, 8*CONF_charsnv+64);
+    SDL_RenderSetLogicalSize(renderer, 8*charsnh, 8*charsnv+64);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
 
     std::cout << "Emulation started." << std::endl;
     uint64_t frame=0;
-    float frameLimit = 1.f / CONF_targetfps;
+    float frameLimit = 1.f / targetfps;
     while (!instance.halted) {
         VM_instcycle(&instance);
-        
+
 		SDL_PollEvent(&event);
 		if (event.type == SDL_QUIT) {
 			instance.halted = 1;
@@ -275,12 +332,12 @@ int main(int argc, char* argv[]) {
 		}
 
         frame ++;
-        if (frame >= CONF_updxframes) {
-			rendermem(instance.memory); // render memory
+        if (frame >= (uint64_t)updxframes) {
+			rendermem(instance.memory, (uint8_t)memrows, (uint8_t)charsnv); // render memory
 
-			for (uint16_t x=0;x<(8*CONF_charsnh);x++) { // render main screen
-				for (uint16_t y=0;y<(8*CONF_charsnv);y++) {
-					uint8_t color = terminal.pixbuf[x+(y*CONF_charsnh*8)];
+			for (uint16_t x=0;x<(8*charsnh);x++) { // render main screen
+				for (uint16_t y=0;y<(8*charsnv);y++) {
+					uint8_t color = terminal.pixbuf[x+(y*charsnh*8)];
 					uint8_t r,g,b;
 					r = VM_colortable[color][0];
 					g = VM_colortable[color][1];
@@ -294,16 +351,16 @@ int main(int argc, char* argv[]) {
             SDL_RenderPresent(renderer);
         }
 
-        if (CONF_fpslimiter) {
+        if (fpslimiter) {
             usleep(frameLimit*1000000);
         }
     }
     std::cout << "Emulation finished at IP '" << instance.IP << "'" << std::endl;
 
-    if (CONF_memdump) {
+    if (memdump) {
         std::cout << "Dumping memory..." << std::endl;
         std::ofstream dumpfile("memdump.bin");
-        for (uint16_t index=0;index<VM_getsize(CONF_memrows);index++) {
+        for (uint16_t index=0;index<memsize_words;index++) {
             dumpfile << instance.memory.content[index] << std::endl;
         }
         dumpfile.close();
@@ -311,14 +368,14 @@ int main(int argc, char* argv[]) {
         std::cout << "Dumping disassembled memory..." << std::endl;
         std::ofstream dumpfile2("memdumpdisasm.asm");
         dumpfile2 << "%include \"common\"" << std::endl;
-        for (uint16_t index=0;index<VM_getsize(CONF_memrows);index++) {
+        for (uint16_t index=0;index<memsize_words;index++) {
             char* temp = VM_disasminstruction(instance.memory.content[index]);
             dumpfile2 << temp << std::endl;
             free(temp);
         }
         dumpfile2.close();
     }
-    if (CONF_maketracedump) {
+    if (tracedump) {
         std::cout << "Dumping trace..." << std::endl;
         std::ofstream dumpfile("tracedump.bin");
         for (uint16_t index=0;index<instance.tracesize;index++) {
@@ -342,6 +399,7 @@ int main(int argc, char* argv[]) {
         dumpfile2.close();
     }
 
+    VM_delterm(&terminal);
     VM_delinstance(instance);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

@@ -22,12 +22,16 @@ typedef struct {
     uint8_t sch_mode; // schedule mode
     uint8_t sch_reg; // schedule reg
 
-    VM_word backtrace[CONF_tracesize];
-    VM_word backtraceaddrs[CONF_tracesize];
-    VM_word backtraceop[CONF_tracesize][3];
+    uint8_t allowsmul;
+    uint8_t maketracedump;
+    uint64_t maxtracesize;
+
+    VM_word* backtrace;
+    VM_word* backtraceaddrs;
+    VM_word (*backtraceop)[3];
     uint64_t tracesize;
 } VM_vminstance;
 
-VM_vminstance VM_newinstance(uint8_t memsize, uint8_t coreamount, uint8_t* coretypes);
+VM_vminstance VM_newinstance(uint8_t memsize, uint8_t coreamount, uint8_t* coretypes, uint16_t rowsize, uint8_t allowsmul, uint8_t maketracedump, uint64_t tracesize);
 void VM_delinstance(VM_vminstance inst);
 void VM_instcycle(VM_vminstance* _inst);

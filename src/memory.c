@@ -37,14 +37,15 @@ uint8_t VM_callwhooks(VM_memory memory, uint16_t addr, VM_word val) {
 	}
 	return called;
 }
-uint16_t VM_getsize(uint8_t rows) {
-	return VM_rowsize*rows;
+uint16_t VM_getsize(uint8_t rows, uint16_t rowsize) {
+	return rowsize*rows;
 }
-VM_memory VM_newmemory(uint8_t rows) {
+VM_memory VM_newmemory(uint8_t rows, uint16_t rowsize) {
 	VM_memory out;
-	out.content = (VM_word*)malloc(sizeof(VM_word)*VM_getsize(rows));
-	memset(out.content, 0xAA, sizeof(VM_word)*VM_getsize(rows));
 	out.rows = rows;
+	out.rowsize = rowsize;
+	out.content = (VM_word*)malloc(sizeof(VM_word)*VM_getsize(rows, rowsize));
+	memset(out.content, 0xAA, sizeof(VM_word)*VM_getsize(rows, rowsize));
 	out.rha = 0;
 	out.wha = 0;
 	return out;
@@ -54,14 +55,14 @@ VM_word VM_memread(VM_memory memory, uint16_t addr) {
 	if (hook != NULL) {
 		return hook(addr);
 	}
-	if (addr >= VM_getsize(memory.rows)) {return VM_nullword;}
+	if (addr >= VM_getsize(memory.rows, memory.rowsize)) {return VM_nullword;}
 	VM_word temp = memory.content[addr];
 	patchword(&temp);
 	return temp;
 }
 void VM_memwrite(VM_memory memory, uint16_t addr, VM_word newval) {
 	if (VM_callwhooks(memory, addr, newval)) {return;}
-	if (addr >= VM_getsize(memory.rows)) {return;}
+	if (addr >= VM_getsize(memory.rows, memory.rowsize)) {return;}
 	patchword(&newval);
 	memory.content[addr] = newval;
 }

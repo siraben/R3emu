@@ -1,6 +1,7 @@
 /*
 Written by Justus Wolff in very late 2025.
 */
+#include <stdlib.h>
 #include "terminal.h"
 #include "common.h"
 #include "font8x8_basic.h"
@@ -45,16 +46,21 @@ VM_pixel VM_colortable[16][3] = {
 };
 
 
-VM_term VM_newterm() {
+VM_term VM_newterm(uint8_t charsnh, uint8_t charsnv) {
     VM_term out;
-    for (uint32_t i=0;i<CONF_pixam;i++) {
-        out.pixbuf[i] = 0;
-    }
+    out.charsnh = charsnh;
+    out.charsnv = charsnv;
+    uint32_t pixam = (8 * charsnh) * (8 * charsnv);
+    out.pixbuf = (uint8_t*)calloc(pixam, sizeof(uint8_t));
     out.nlchar = '\n';
     return out;
 }
+void VM_delterm(VM_term* term) {
+    free(term->pixbuf);
+    term->pixbuf = NULL;
+}
 void VM_setrawpix(VM_term* term, uint32_t x, uint32_t y, SDL_Renderer* renderer, uint8_t color) {
-    term->pixbuf[x+(y*CONF_charsnh*8)] = color;
+    term->pixbuf[x+(y*term->charsnh*8)] = color;
 	//SDL_SetRenderDrawColor(renderer, color[0], color[1], color[2], 255);
     //SDL_RenderDrawPoint(renderer, x, y);
 }
@@ -76,7 +82,7 @@ void VM_setchar(VM_term* term, uint8_t fcolor, uint8_t bcolor, uint8_t charindex
     }
 }
 void VM_copypix(VM_term* term, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, SDL_Renderer* renderer) {
-    VM_setpix(term, dx, dy, term->pixbuf[sx+(sy*(8*CONF_charsnh))], renderer);
+    VM_setpix(term, dx, dy, term->pixbuf[sx+(sy*(8*term->charsnh))], renderer);
 }
 void VM_copycharpix(VM_term* term, uint8_t sx, uint8_t sy, uint8_t dx, uint8_t dy, SDL_Renderer* renderer) {
     sy *= 8;
