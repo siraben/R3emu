@@ -21,7 +21,14 @@ use terminal::COLOR_TABLE;
 use vm::{CoreType, Vm};
 
 #[derive(Parser)]
-#[command(name = "r3emu", about = "R3 emulator")]
+#[command(
+    name = "r3emu",
+    about = "R3 emulator",
+    long_about = "R3 emulator\n\
+        Written by Justus Wolff in very late 2025-2026\n\
+        With help from LBPHacker, to fix alot of arithmetic bugs, who also made the original R3\n\
+        Also credit to siraben due to finding bugs and patching them by implementing haskell for the R3."
+)]
 struct Args {
     /// Input binary file
     input: String,
