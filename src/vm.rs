@@ -68,7 +68,8 @@ impl Vm {
 
     #[inline(always)]
     fn read_reg(&self, index: u8) -> u32 {
-        self.regs[(index & 31) as usize]
+        let i = (index & 31) as usize;
+        if i == 0 { 0x20000000 } else { self.regs[i] }
     }
 
     #[inline(always)]
@@ -158,76 +159,87 @@ impl Vm {
         match loi {
             4 => {
                 // sub: operand order is ssrc - psrcreg (reversed vs add)
-                let result =
-                    sub(ssrc as u32, self.read_reg(psrcreg), &mut self.flags, update);
+                let psrc = self.read_reg(psrcreg);
+                let result = sub(ssrc as u32, psrc, &mut self.flags, update);
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             5 => {
                 // sbb
+                let psrc = self.read_reg(psrcreg);
                 let carry_in = get_flag(self.flags, 2);
                 let result = sbb(
                     ssrc as u32,
-                    self.read_reg(psrcreg),
+                    psrc,
                     &mut self.flags,
                     carry_in,
                     update,
                 );
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             6 => {
                 // add
-                let result =
-                    add(self.read_reg(psrcreg), ssrc as u32, &mut self.flags, update);
+                let psrc = self.read_reg(psrcreg);
+                let result = add(psrc, ssrc as u32, &mut self.flags, update);
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             7 => {
                 // adc
+                let psrc = self.read_reg(psrcreg);
                 let carry_in = if get_flag(self.flags, 2) { 1 } else { 0 };
                 let result = adc(
-                    self.read_reg(psrcreg),
+                    psrc,
                     ssrc as u32,
                     &mut self.flags,
                     carry_in,
                     update,
                 );
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             8 => {
                 // xor
-                let result =
-                    xor(self.read_reg(psrcreg), ssrc as u32, &mut self.flags, update);
+                let psrc = self.read_reg(psrcreg);
+                let result = xor(psrc, ssrc as u32, &mut self.flags, update);
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             9 => {
                 // or
-                let result =
-                    or(self.read_reg(psrcreg), ssrc as u32, &mut self.flags, update);
+                let psrc = self.read_reg(psrcreg);
+                let result = or(psrc, ssrc as u32, &mut self.flags, update);
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             11 => {
                 // bitshift: raw_ssrc bit 15 determines direction
+                let psrc = self.read_reg(psrcreg);
                 let is_shr = (raw_ssrc >> 15) != 0;
                 let result = if !is_shr {
                     shl(
-                        self.read_reg(psrcreg),
+                        psrc,
                         (ssrc as u32) & 0b1111,
                         &mut self.flags,
                         update,
                     )
                 } else {
                     shr(
-                        self.read_reg(psrcreg),
+                        psrc,
                         (ssrc as u32) & 0b1111,
                         &mut self.flags,
                         update,
                     )
                 };
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             12 => {
                 // and
-                let result =
-                    and(self.read_reg(psrcreg), ssrc as u32, &mut self.flags, update);
+                let psrc = self.read_reg(psrcreg);
+                let result = and(psrc, ssrc as u32, &mut self.flags, update);
+                let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
             13 => {
@@ -235,30 +247,36 @@ impl Vm {
                 self.halted = true;
             }
             14 => {
-                // mul (moi=0) / muls (moi=1)
-                let can_mul =
-                    (core_type == CoreType::S && self.allow_smul) || core_type == CoreType::M;
+                // mul (moi=0) / muls (moi=1, M-core only)
+                let psrc = self.read_reg(psrcreg);
+                let can_mul = if moi == 0 {
+                    (core_type == CoreType::S && self.allow_smul) || core_type == CoreType::M
+                } else {
+                    core_type == CoreType::M
+                };
                 if can_mul {
                     let result = if moi == 0 {
-                        mul(self.read_reg(psrcreg), ssrc as u32)
+                        mul(psrc, ssrc as u32)
                     } else {
-                        muls(self.read_reg(psrcreg), ssrc as u32)
+                        muls(psrc, ssrc as u32)
                     };
+                    let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                     self.write_reg(destreg, result);
                 } else {
                     skip_ip_inc = true;
                 }
             }
             15 => {
-                // mulh (moi=0) / mulx (moi=1)
-                let can_mul =
-                    (core_type == CoreType::S && self.allow_smul) || core_type == CoreType::M;
+                // mulh (moi=0, M-core only) / mulx (moi=1, M-core only)
+                let psrc = self.read_reg(psrcreg);
+                let can_mul = core_type == CoreType::M;
                 if can_mul {
                     let result = if moi == 0 {
-                        mulh(self.read_reg(psrcreg), ssrc as u32)
+                        mulh(psrc, ssrc as u32)
                     } else {
-                        mulx(self.read_reg(psrcreg), ssrc as u32)
+                        mulx(psrc, ssrc as u32)
                     };
+                    let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                     self.write_reg(destreg, result);
                 } else {
                     skip_ip_inc = true;
@@ -296,20 +314,20 @@ impl Vm {
                 let newval = patch_word(upper | lower);
                 self.write_reg(destreg, newval);
                 if moi != 0 {
-                    set_flag(&mut self.flags, 0, newval == 0);
-                    set_flag(&mut self.flags, 1, (newval >> 31) != 0);
+                    set_flag(&mut self.flags, 0, (newval & 0xFFFF) == 0);
+                    set_flag(&mut self.flags, 1, (newval >> 15) & 1 != 0);
                     set_flag(&mut self.flags, 2, false);
                 }
             }
             3 => {
-                // exh
-                let shifted = self.read_reg(psrcreg) << 16;
-                let lower = (ssrc as u32) >> 16; // always 0 since ssrc is u16
+                // exh: D[31:16] = S[15:0], D[15:0] = P[31:16]
+                let shifted = (ssrc as u32) << 16;
+                let lower = self.read_reg(psrcreg) >> 16;
                 let newval = patch_word(shifted | lower);
                 self.write_reg(destreg, newval);
                 if moi != 0 {
-                    set_flag(&mut self.flags, 0, newval == 0);
-                    set_flag(&mut self.flags, 1, (newval >> 31) != 0);
+                    set_flag(&mut self.flags, 0, (newval & 0xFFFF) == 0);
+                    set_flag(&mut self.flags, 1, (newval >> 15) & 1 != 0);
                     set_flag(&mut self.flags, 2, false);
                 }
             }

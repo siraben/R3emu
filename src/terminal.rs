@@ -161,7 +161,7 @@ impl Terminal {
         let backcolor = if !cfdata {
             (self.colors >> 4) & 0b1111
         } else {
-            ((val >> 13) & 0b1111) as u8
+            ((val >> 12) & 0b1111) as u8
         };
         let charindex = (val & 0xFF) as u8;
 
@@ -177,7 +177,7 @@ impl Terminal {
         if etmode {
             // Character print mode
             if pval > pend {
-                pval = 0;
+                pval = pstart;
                 sval = sval.wrapping_add(1);
             }
             if sval > send {

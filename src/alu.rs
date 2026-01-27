@@ -107,13 +107,12 @@ pub fn mulx(a: u32, b: u32) -> u32 {
     out >> 16
 }
 
-/// Shift left. Note: intentionally does NOT mask result to 16 bits,
-/// matching the original C implementation behavior.
+/// Shift left. Result is masked to 16 bits per the ALU word width.
 #[inline]
 pub fn shl(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
     let target = patch_word(target);
     let pos = patch_word(pos) & 0b1111;
-    let out = target << pos;
+    let out = alu_word_limit(target << pos);
     let out = patch_word(out);
     if update {
         set_flag(flags, 0, out == 0);
@@ -122,11 +121,10 @@ pub fn shl(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
     out
 }
 
-/// Shift right. Note: intentionally does NOT mask target to 16 bits
-/// before shifting, matching the original C implementation behavior.
+/// Shift right. Target is masked to 16 bits before shifting per ALU word width.
 #[inline]
 pub fn shr(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
-    let target = patch_word(target);
+    let target = alu_word_limit(patch_word(target));
     let pos = patch_word(pos) & 0b1111;
     let out = target >> pos;
     let out = patch_word(out);
