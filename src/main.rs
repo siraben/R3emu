@@ -81,6 +81,10 @@ struct Args {
     /// Mirror terminal output to stdout
     #[arg(long)]
     stdout: bool,
+
+    /// Run without UI
+    #[arg(long)]
+    headless: bool,
 }
 
 fn calc_mem_color(value: u32) -> [u8; 3] {
@@ -157,34 +161,6 @@ fn main() {
         ]);
     }
 
-    // SDL2 setup
-    let sdl_context = sdl2::init().expect("Failed to init SDL2");
-    let video = sdl_context.video().expect("Failed to init SDL2 video");
-
-    let logical_w = 8 * args.term_cols as u32;
-    let logical_h = 8 * args.term_rows as u32 + 64;
-
-    let window = video
-        .window("R3 Emulator", 300, 500)
-        .position_centered()
-        .build()
-        .expect("Failed to create window");
-
-    let mut canvas = window
-        .into_canvas()
-        .build()
-        .expect("Failed to create canvas");
-
-    canvas
-        .set_logical_size(logical_w, logical_h)
-        .expect("Failed to set logical size");
-
-    canvas.set_draw_color(Color::RGB(0, 0, 0));
-    canvas.clear();
-    canvas.present();
-
-    let mut event_pump = sdl_context.event_pump().expect("Failed to get event pump");
-
     eprintln!(
         "Target fps: {}\nTarget ips: {}",
         args.targetfps,
@@ -192,96 +168,131 @@ fn main() {
     );
     eprintln!("Emulation started.");
 
-    let frame_duration = if !args.no_fpslimiter && args.targetfps > 0 {
-        Some(Duration::from_secs_f64(1.0 / args.targetfps as f64))
+    if args.headless {
+        // Headless mode: run VM without SDL2
+        while !vm.halted {
+            vm.cycle();
+        }
     } else {
-        None
-    };
+        // SDL2 setup
+        let sdl_context = sdl2::init().expect("Failed to init SDL2");
+        let video = sdl_context.video().expect("Failed to init SDL2 video");
 
-    let mut frame: u64 = 0;
+        let logical_w = 8 * args.term_cols as u32;
+        let logical_h = 8 * args.term_rows as u32 + 64;
 
-    while !vm.halted {
-        let frame_start = Instant::now();
+        let window = video
+            .window("R3 Emulator", 300, 500)
+            .position_centered()
+            .build()
+            .expect("Failed to create window");
 
-        vm.cycle();
+        let mut canvas = window
+            .into_canvas()
+            .build()
+            .expect("Failed to create canvas");
 
-        // Process events
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. } => {
-                    vm.halted = true;
-                }
-                Event::KeyDown {
-                    keycode: Some(key), ..
-                } => {
-                    let k: i32 = key.into();
-                    let a: i32 = Keycode::A.into();
-                    let z: i32 = Keycode::Z.into();
-                    let n0: i32 = Keycode::Num0.into();
-                    let n9: i32 = Keycode::Num9.into();
-                    let ch: u8 = if k >= a && k <= z {
-                        b'a' + (k - a) as u8
-                    } else if k >= n0 && k <= n9 {
-                        b'0' + (k - n0) as u8
-                    } else {
-                        match key {
-                            Keycode::Return => b'\n',
-                            Keycode::Backspace => 8,
-                            Keycode::Tab => b'\t',
-                            Keycode::Space => b' ',
-                            Keycode::Escape => 27,
-                            _ => 0,
+        canvas
+            .set_logical_size(logical_w, logical_h)
+            .expect("Failed to set logical size");
+
+        canvas.set_draw_color(Color::RGB(0, 0, 0));
+        canvas.clear();
+        canvas.present();
+
+        let mut event_pump = sdl_context.event_pump().expect("Failed to get event pump");
+
+        let frame_duration = if !args.no_fpslimiter && args.targetfps > 0 {
+            Some(Duration::from_secs_f64(1.0 / args.targetfps as f64))
+        } else {
+            None
+        };
+
+        let mut frame: u64 = 0;
+
+        while !vm.halted {
+            let frame_start = Instant::now();
+
+            vm.cycle();
+
+            // Process events
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::Quit { .. } => {
+                        vm.halted = true;
+                    }
+                    Event::KeyDown {
+                        keycode: Some(key), ..
+                    } => {
+                        let k: i32 = key.into();
+                        let a: i32 = Keycode::A.into();
+                        let z: i32 = Keycode::Z.into();
+                        let n0: i32 = Keycode::Num0.into();
+                        let n9: i32 = Keycode::Num9.into();
+                        let ch: u8 = if k >= a && k <= z {
+                            b'a' + (k - a) as u8
+                        } else if k >= n0 && k <= n9 {
+                            b'0' + (k - n0) as u8
+                        } else {
+                            match key {
+                                Keycode::Return => b'\n',
+                                Keycode::Backspace => 8,
+                                Keycode::Tab => b'\t',
+                                Keycode::Space => b' ',
+                                Keycode::Escape => 27,
+                                _ => 0,
+                            }
+                        };
+                        if ch != 0 {
+                            vm.bus.keyboard.register_keypress(ch);
                         }
-                    };
-                    if ch != 0 {
-                        vm.bus.keyboard.register_keypress(ch);
+                    }
+                    _ => {}
+                }
+            }
+
+            frame += 1;
+            if frame >= args.updxframes {
+                // Render memory visualization (below terminal area)
+                let term_pix_h = 8 * args.term_rows as i32;
+                for row in 0..args.memrows as i32 {
+                    for col in 0..128i32 {
+                        let addr = (col + 128 * row) as u16;
+                        let val = vm.bus.read(addr);
+                        let color = calc_mem_color(val);
+                        canvas.set_draw_color(Color::RGB(color[0], color[1], color[2]));
+                        let _ = canvas.draw_point(Point::new(col, row + term_pix_h));
                     }
                 }
-                _ => {}
-            }
-        }
 
-        frame += 1;
-        if frame >= args.updxframes {
-            // Render memory visualization (below terminal area)
-            let term_pix_h = 8 * args.term_rows as i32;
-            for row in 0..args.memrows as i32 {
-                for col in 0..128i32 {
-                    let addr = (col + 128 * row) as u16;
-                    let val = vm.bus.read(addr);
-                    let color = calc_mem_color(val);
-                    canvas.set_draw_color(Color::RGB(color[0], color[1], color[2]));
-                    let _ = canvas.draw_point(Point::new(col, row + term_pix_h));
+                // Render terminal pixel buffer
+                let term_w = vm.bus.terminal.pixel_width() as i32;
+                let term_h = vm.bus.terminal.pixel_height() as i32;
+                let stride = term_w as usize;
+                for y in 0..term_h {
+                    for x in 0..term_w {
+                        let idx = x as usize + y as usize * stride;
+                        let ci = if idx < vm.bus.terminal.pixbuf.len() {
+                            vm.bus.terminal.pixbuf[idx] as usize & 0xF
+                        } else {
+                            0
+                        };
+                        let rgb = &COLOR_TABLE[ci];
+                        canvas.set_draw_color(Color::RGB(rgb[0], rgb[1], rgb[2]));
+                        let _ = canvas.draw_point(Point::new(x, y));
+                    }
                 }
+
+                frame = 0;
+                canvas.present();
             }
 
-            // Render terminal pixel buffer
-            let term_w = vm.bus.terminal.pixel_width() as i32;
-            let term_h = vm.bus.terminal.pixel_height() as i32;
-            let stride = term_w as usize;
-            for y in 0..term_h {
-                for x in 0..term_w {
-                    let idx = x as usize + y as usize * stride;
-                    let ci = if idx < vm.bus.terminal.pixbuf.len() {
-                        vm.bus.terminal.pixbuf[idx] as usize & 0xF
-                    } else {
-                        0
-                    };
-                    let rgb = &COLOR_TABLE[ci];
-                    canvas.set_draw_color(Color::RGB(rgb[0], rgb[1], rgb[2]));
-                    let _ = canvas.draw_point(Point::new(x, y));
+            // FPS limiting
+            if let Some(dur) = frame_duration {
+                let elapsed = frame_start.elapsed();
+                if elapsed < dur {
+                    std::thread::sleep(dur - elapsed);
                 }
-            }
-
-            frame = 0;
-            canvas.present();
-        }
-
-        // FPS limiting
-        if let Some(dur) = frame_duration {
-            let elapsed = frame_start.elapsed();
-            if elapsed < dur {
-                std::thread::sleep(dur - elapsed);
             }
         }
     }
