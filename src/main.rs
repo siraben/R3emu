@@ -77,6 +77,10 @@ struct Args {
     /// Disable pixel plotting
     #[arg(long = "no-pixplot")]
     no_pixplot: bool,
+
+    /// Mirror terminal output to stdout
+    #[arg(long)]
+    stdout: bool,
 }
 
 fn calc_mem_color(value: u32) -> [u8; 3] {
@@ -137,6 +141,7 @@ fn main() {
     };
 
     let mut vm = Vm::new(bus, cores, !args.no_smul, trace_size);
+    vm.bus.terminal.mirror_stdout = args.stdout;
 
     // Load binary into memory (native byte order, matching C memcpy behavior)
     eprintln!("Reading into memory...");

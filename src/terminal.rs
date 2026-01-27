@@ -1,3 +1,5 @@
+use std::io::{self, Write};
+
 use crate::font::FONT_8X8;
 
 /// 16-color palette (CGA-style ordering).
@@ -34,6 +36,7 @@ pub struct Terminal {
     pub scrollmask: u32,
     pub char0even: u32,
     pub char0odd: u32,
+    pub mirror_stdout: bool,
 }
 
 impl Terminal {
@@ -51,6 +54,7 @@ impl Terminal {
             scrollmask: 0,
             char0even: 0,
             char0odd: 0,
+            mirror_stdout: false,
         }
     }
 
@@ -203,6 +207,11 @@ impl Terminal {
                 };
                 self.set_char(forecolor, backcolor, charindex, col, rw);
                 pval = pval.wrapping_add(1);
+                if self.mirror_stdout {
+                    let _ = io::stdout().write_all(&[charindex]);
+                }
+            } else if self.mirror_stdout {
+                let _ = io::stdout().write_all(b"\n");
             }
         } else {
             // Scroll-only mode
