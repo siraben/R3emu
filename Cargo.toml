@@ -6,3 +6,10 @@ edition = "2021"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 sdl2 = "0.37"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "bee_lzss"
+harness = false
