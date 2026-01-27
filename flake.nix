@@ -10,19 +10,18 @@
       let
         pkgs = import nixpkgs { inherit system; };
         lib = pkgs.lib;
-
-        r3emu = pkgs.stdenv.mkDerivation {
+        r3emu = pkgs.rustPlatform.buildRustPackage {
           pname = "r3emu";
-          version = "0.1";
+          version = "0.1.0";
           src = lib.cleanSource ./.;
-          strictDeps = true;
+          cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = [
-            pkgs.meson
-            pkgs.ninja
             pkgs.pkg-config
           ];
           buildInputs = [
             pkgs.SDL2
+          ] ++ lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.libiconv
           ];
         };
       in
@@ -30,9 +29,10 @@
         devShells.default = pkgs.mkShell {
           inputsFrom = [ r3emu ];
           packages = [
-            pkgs.clang
-            pkgs.gcc
-            pkgs.gnumake
+            pkgs.cargo
+            pkgs.rustc
+            pkgs.rust-analyzer
+            pkgs.clippy
           ];
         };
 
