@@ -80,6 +80,8 @@ All configuration is done via CLI flags. Run `r3emu --help` for the full list.
 | `--no-smul` | off | Disallow S-type core multiplication |
 | `--stdout` | off | Mirror terminal output to stdout |
 | `--headless` | off | Run without UI (no SDL2 window) |
+| `--keyboard-input` | unset | Queue literal keyboard input bytes after emulation starts |
+| `--keyboard-input-file` | unset | Queue keyboard input bytes from a file after emulation starts |
+| `--keyboard-input-delay-cycles` | 1 | Cycles to wait before scripted keyboard input becomes available |
 
 I think I explained everything now. For questions: technik_hea on DC
-

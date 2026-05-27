@@ -92,6 +92,18 @@ struct Args {
     /// Run without UI
     #[arg(long)]
     headless: bool,
+
+    /// Queue keyboard input bytes before emulation starts
+    #[arg(long = "keyboard-input")]
+    keyboard_input: Option<String>,
+
+    /// Queue keyboard input bytes from a file before emulation starts
+    #[arg(long = "keyboard-input-file")]
+    keyboard_input_file: Option<String>,
+
+    /// Cycles to wait before scripted keyboard input becomes available
+    #[arg(long = "keyboard-input-delay-cycles", default_value_t = 1)]
+    keyboard_input_delay_cycles: u64,
 }
 
 fn calc_mem_color(value: u32) -> [u8; 3] {
@@ -153,6 +165,21 @@ fn main() {
 
     let mut vm = Vm::new(bus, cores, !args.no_smul, trace_size);
     vm.bus.terminal.mirror_stdout = args.stdout;
+    let mut scripted_keyboard_input = Vec::new();
+    if let Some(input) = args.keyboard_input.as_ref() {
+        scripted_keyboard_input.extend(input.bytes());
+    }
+    if let Some(path) = args.keyboard_input_file.as_ref() {
+        match fs::read(path) {
+            Ok(bytes) => scripted_keyboard_input.extend(bytes),
+            Err(e) => {
+                eprintln!("Failed to read keyboard input file '{}': {}", path, e);
+                std::process::exit(2);
+            }
+        }
+    }
+    let mut keyboard_input_queued = scripted_keyboard_input.is_empty();
+    let mut elapsed_cycles = 0u64;
 
     // Load binary into memory (native byte order, matching C memcpy behavior)
     eprintln!("Reading into memory...");
@@ -178,7 +205,14 @@ fn main() {
     if args.headless {
         // Headless mode: run VM without SDL2
         while !vm.halted {
+            if !keyboard_input_queued && elapsed_cycles >= args.keyboard_input_delay_cycles {
+                vm.bus
+                    .keyboard
+                    .queue_keypresses(scripted_keyboard_input.iter().copied());
+                keyboard_input_queued = true;
+            }
             vm.cycle();
+            elapsed_cycles += 1;
         }
     } else {
         // SDL2 setup
@@ -220,7 +254,14 @@ fn main() {
         while !vm.halted {
             let frame_start = Instant::now();
 
+            if !keyboard_input_queued && elapsed_cycles >= args.keyboard_input_delay_cycles {
+                vm.bus
+                    .keyboard
+                    .queue_keypresses(scripted_keyboard_input.iter().copied());
+                keyboard_input_queued = true;
+            }
             vm.cycle();
+            elapsed_cycles += 1;
 
             // Process events
             for event in event_pump.poll_iter() {
