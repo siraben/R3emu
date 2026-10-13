@@ -197,9 +197,10 @@ pub fn disassemble(instruction: u32) -> String {
             )
         }
         3 => {
-            // exh
+            let name = if moi == 0 { "exhs" } else { "exh" };
             format!(
-                "exh {}, {}, {}",
+                "{} {}, {}, {}",
+                name,
                 reg_name(destreg),
                 reg_name(psrcreg),
                 ssrc_str
@@ -217,5 +218,16 @@ pub fn disassemble(instruction: u32) -> String {
             )
         }
         _ => format!("dw {}", instruction),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::disassemble;
+
+    #[test]
+    fn exchange_halves_preserves_the_flag_update_distinction() {
+        assert_eq!(disassemble(0x0223_0003), "exhs r1, r2, r3");
+        assert_eq!(disassemble(0x8223_0003), "exh r1, r2, r3");
     }
 }
