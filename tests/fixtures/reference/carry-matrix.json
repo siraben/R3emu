@@ -1,0 +1,1410 @@
+[
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "address": 1400,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1401,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "S",
+    "address": 1402,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "C",
+    "address": 1403,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "O",
+    "address": 1404,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "address": 1405,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1406,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "S",
+    "address": 1407,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "C",
+    "address": 1408,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "O",
+    "address": 1409,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "address": 1410,
+    "expected": 536903680
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1411,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "S",
+    "address": 1412,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "C",
+    "address": 1413,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "O",
+    "address": 1414,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "address": 1415,
+    "expected": 536903679
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1416,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "S",
+    "address": 1417,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "C",
+    "address": 1418,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "O",
+    "address": 1419,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "address": 1420,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1421,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "S",
+    "address": 1422,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "C",
+    "address": 1423,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "O",
+    "address": 1424,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "address": 1425,
+    "expected": 536903681
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1426,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "S",
+    "address": 1427,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "C",
+    "address": 1428,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "O",
+    "address": 1429,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "address": 1430,
+    "expected": 536936446
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1431,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "S",
+    "address": 1432,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "C",
+    "address": 1433,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "O",
+    "address": 1434,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "address": 1435,
+    "expected": 536928935
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1436,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "S",
+    "address": 1437,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "C",
+    "address": 1438,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "O",
+    "address": 1439,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "address": 1440,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1441,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "S",
+    "address": 1442,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "C",
+    "address": 1443,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "O",
+    "address": 1444,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "address": 1445,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1446,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "S",
+    "address": 1447,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "C",
+    "address": 1448,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "O",
+    "address": 1449,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "address": 1450,
+    "expected": 536903681
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1451,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "S",
+    "address": 1452,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "C",
+    "address": 1453,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "O",
+    "address": 1454,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "address": 1455,
+    "expected": 536903680
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1456,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "S",
+    "address": 1457,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "C",
+    "address": 1458,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "O",
+    "address": 1459,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "address": 1460,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1461,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "S",
+    "address": 1462,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "C",
+    "address": 1463,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "O",
+    "address": 1464,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "address": 1465,
+    "expected": 536903682
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1466,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "S",
+    "address": 1467,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "C",
+    "address": 1468,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "O",
+    "address": 1469,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "address": 1470,
+    "expected": 536936447
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1471,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "S",
+    "address": 1472,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "C",
+    "address": 1473,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "O",
+    "address": 1474,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "address": 1475,
+    "expected": 536928936
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1476,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "S",
+    "address": 1477,
+    "expected": 536870913
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "C",
+    "address": 1478,
+    "expected": 536870912
+  },
+  {
+    "op": "adc",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "O",
+    "address": 1479,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "address": 1480,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1481,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "S",
+    "address": 1482,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "C",
+    "address": 1483,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 0,
+    "flag": "O",
+    "address": 1484,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "address": 1485,
+    "expected": 536870914
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1486,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "S",
+    "address": 1487,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "C",
+    "address": 1488,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 0,
+    "flag": "O",
+    "address": 1489,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "address": 1490,
+    "expected": 536903682
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1491,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "S",
+    "address": 1492,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "C",
+    "address": 1493,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 0,
+    "flag": "O",
+    "address": 1494,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "address": 1495,
+    "expected": 536903679
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1496,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "S",
+    "address": 1497,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "C",
+    "address": 1498,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 0,
+    "flag": "O",
+    "address": 1499,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "address": 1500,
+    "expected": 536936446
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1501,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "S",
+    "address": 1502,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "C",
+    "address": 1503,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 0,
+    "flag": "O",
+    "address": 1504,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "address": 1505,
+    "expected": 536903681
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1506,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "S",
+    "address": 1507,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "C",
+    "address": 1508,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 0,
+    "flag": "O",
+    "address": 1509,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "address": 1510,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1511,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "S",
+    "address": 1512,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "C",
+    "address": 1513,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 0,
+    "flag": "O",
+    "address": 1514,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "address": 1515,
+    "expected": 536904245
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "Z",
+    "address": 1516,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "S",
+    "address": 1517,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "C",
+    "address": 1518,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 0,
+    "flag": "O",
+    "address": 1519,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "address": 1520,
+    "expected": 536936447
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1521,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "S",
+    "address": 1522,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "C",
+    "address": 1523,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 0,
+    "b": 0,
+    "carry": 1,
+    "flag": "O",
+    "address": 1524,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "address": 1525,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1526,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "S",
+    "address": 1527,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "C",
+    "address": 1528,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 1,
+    "carry": 1,
+    "flag": "O",
+    "address": 1529,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "address": 1530,
+    "expected": 536903681
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1531,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "S",
+    "address": 1532,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "C",
+    "address": 1533,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32767,
+    "b": 1,
+    "carry": 1,
+    "flag": "O",
+    "address": 1534,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "address": 1535,
+    "expected": 536903678
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1536,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "S",
+    "address": 1537,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "C",
+    "address": 1538,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 65535,
+    "carry": 1,
+    "flag": "O",
+    "address": 1539,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "address": 1540,
+    "expected": 536936445
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1541,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "S",
+    "address": 1542,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "C",
+    "address": 1543,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 1,
+    "b": 65535,
+    "carry": 1,
+    "flag": "O",
+    "address": 1544,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "address": 1545,
+    "expected": 536903680
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1546,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "S",
+    "address": 1547,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "C",
+    "address": 1548,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 32768,
+    "b": 1,
+    "carry": 1,
+    "flag": "O",
+    "address": 1549,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "address": 1550,
+    "expected": 536936447
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1551,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "S",
+    "address": 1552,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "C",
+    "address": 1553,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 65535,
+    "b": 65535,
+    "carry": 1,
+    "flag": "O",
+    "address": 1554,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "address": 1555,
+    "expected": 536904244
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "Z",
+    "address": 1556,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "S",
+    "address": 1557,
+    "expected": 536870913
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "C",
+    "address": 1558,
+    "expected": 536870912
+  },
+  {
+    "op": "sbb",
+    "a": 12345,
+    "b": 45678,
+    "carry": 1,
+    "flag": "O",
+    "address": 1559,
+    "expected": 536870912
+  }
+]

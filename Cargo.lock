@@ -406,6 +406,8 @@ dependencies = [
  "clap",
  "criterion",
  "sdl2",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
