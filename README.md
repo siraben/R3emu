@@ -1,87 +1,161 @@
 # R3emu
-A (full) R3 emulator...
-Why did I start making this again? Oh right cuz its 1 AM in the morning
 
-Written by technik_hea, with help from LBPHacker who also made the original R3.
-Rewritten in Rust by siraben.
+Emulator for LBPHacker's R3 computer in Rust. R3 is a family of computers built
+inside **The Powder Toy**, with quasi-32-bit storage and a 16-bit ALU.
 
-# Building
+Originally written by Justus Wolff (technik_hea), with help from LBPHacker;
+rewritten in Rust by siraben.
 
-## With Nix (recommended)
+## Features
 
-```
+- R3 instruction execution, flags, delayed memory operations, and read-only RAM mirrors.
+- SDL2 terminal, 16-color pixel plotting, keyboard input, and RAM visualization.
+- Headless execution, terminal output to stdout, and scripted keyboard input.
+- Memory/disassembly dumps, bounded instruction traces, and a Criterion benchmark.
+- A reusable Rust library exposing the VM, bus, ALU, and peripherals.
+
+The CLI uses ten multiply-capable (M-type) execution units by default. These
+execute sequentially as one computer, not as host threads. The library also
+exposes F- and S-type units. This is not a simulation of all Powder Toy hardware
+or external peripheral timing.
+
+## Build
+
+### Nix
+
+```sh
 nix build
+./result/bin/r3emu --help
 ```
 
-The emulator will be at `result/bin/r3emu`.
+For development:
 
-For a development shell with all dependencies:
-
-```
+```sh
 nix develop
-cargo build --release
+cargo build --release --locked
 ```
 
-## With Cargo
+### Cargo
 
-You need Rust and SDL2 development libraries installed.
+Install Rust and the SDL2 development libraries, then run:
 
-```
-cargo build --release
-```
-
-The emulator will be at `target/release/r3emu`.
-
-# Usage
-
-```
-r3emu input.bin
+```sh
+cargo build --release --locked
+./target/release/r3emu --help
 ```
 
-How you can get these bin files? Simple: you assemble tptasm files. There is a tpt assembler shipped with the
-repo under tests/tptasm.lua but for that you need to have Lua installed on your system.
-Then you can call tptasm from any file and use it as usual to output a bin file.
+SDL2 is a build/link dependency even when running headless. On macOS it can be
+installed with `brew install sdl2`; on Debian/Ubuntu, with
+`sudo apt install libsdl2-dev`.
 
-There are also a few tpt assembly files under tests as well as their bin equivalents.
-These include:
+## Run
+
+```sh
+# Graphical terminal and RAM view
+r3emu tests/demo.bin
+
+# Run at full speed without a window; ROM output on stdout, diagnostics on stderr
+r3emu tests/bignum_pow2.bin --headless --stdout
+
+# Supply keyboard bytes after one VM cycle (the default delay)
+r3emu tests/wordle.bin --keyboard-input-file guesses.txt
+```
+
+Use `./result/bin/r3emu` or `./target/release/r3emu` if the executable is not on
+`PATH`. The window closes when the program halts. Programs that wait for input
+or loop forever will keep running; headless mode has no automatic timeout.
+
+ROMs contain native-endian 32-bit words, matching the original emulator and
+bundled binaries on little-endian hosts. Empty, partial-word, and oversized
+inputs are rejected. Unloaded RAM starts physically zero; loaded words are
+sanitized according to R3 write semantics.
+
+Scripted input is consumed one byte per keyboard read. Literal `--keyboard-input`
+bytes precede bytes from `--keyboard-input-file` when both are supplied. The
+entire queue becomes available after the selected number of VM cycles (one
+cycle runs all configured execution units), not with a delay between keys.
+Live keypresses take priority. Graphical keyboard input supports lowercase
+letters, digits, Return, Backspace, Tab, Space, and Escape.
+
+### Options
+
+Run `r3emu --help` for the authoritative list.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--memrows` | 64 | RAM rows; nonzero |
+| `--rowsize` | 128 | Words per RAM row; nonzero; total RAM must fit in 65,535 words |
+| `--cores` | 10 | M-type execution units per VM cycle; nonzero |
+| `--targetfps` | 60 | Graphical VM cycles per second; 0 disables limiting |
+| `--no-fpslimiter` | off | Disable graphical rate limiting |
+| `--updxframes` | 10 | VM cycles between redraws (0 also redraws every cycle) |
+| `--term-cols` / `--term-rows` | 12 / 8 | Terminal size in 8×8 character cells; nonzero |
+| `--no-pixplot` | off | Disable pixel-plot I/O |
+| `--no-smul` | off | Disable S-type multiplication (no effect on the CLI's M-only configuration) |
+| `--headless` | off | No SDL window or rate limiting |
+| `--stdout` | off | Mirror printed terminal characters to stdout |
+| `--keyboard-input` | unset | Literal keyboard input bytes |
+| `--keyboard-input-file` | unset | Read keyboard input bytes from a file |
+| `--keyboard-input-delay-cycles` | 1 | VM cycles before scripted input is available |
+| `--memdump` | off | Write memory and disassembly after emulation |
+| `--tracedump` | off | Collect and write an instruction trace |
+| `--tracesize` | 100000 | Maximum trace entries; retains the first entries, not a ring buffer |
+
+The standard R3 memory layout uses 128 words per row and up to 64 rows.
+Other dimensions are emulator extensions, not standard hardware configurations.
+
+Dumps overwrite `memdump.bin`, `memdumpdisasm.asm`, `tracedump.bin`, and
+`tracedumpdisasm.asm` in the working directory as applicable. Despite their
+`.bin` suffix, memory and trace dumps are **decimal text**, not reloadable ROMs.
+Dump write errors are currently not reported reliably.
+
+## Example ROMs and assembler
+
+Prebuilt ROMs are in `tests/`:
 
 | ROM | Description |
 | --- | --- |
-| bee_lzss | Bee movie script decompression (LZSS) |
-| bignum_pow2 | Haskell program calculating 2^64 |
-| triangle | Haskell program drawing Sierpinski triangle |
-| demo | the original demo running on the R3 |
-| colortest | a testing ROM to test the display colors |
-| demodism | same as demo, except a disassembled version from a disassembler |
-| pixplot | Sierpinski carpet |
-| test0 | a basic testing ROM made in the early hours of development |
-| wordle | the wordle game from entropite with their C compiler (copy under /tests/compiler) |
+| `bee_lzss.bin` | Bee Movie script decompression (LZSS) |
+| `bignum_pow2.bin` | Haskell program calculating 2^64 |
+| `triangle.bin` | Haskell program drawing a Sierpinski triangle |
+| `demo.bin` | Original R3 demo |
+| `colortest.bin` | Display color test |
+| `demodism.bin` | Reassembled disassembly of the demo |
+| `pixplot.bin` | Sierpinski carpet |
+| `test0.bin` | Early emulator test |
+| `test_fixes.bin` | Arithmetic/instruction regression ROM |
+| `wordle.bin` | entropite's Wordle, built with the bundled C compiler |
 
-NOTE: the emulator automatically closes the window as soon as the emulation finishes.
+The standalone TPTASM copy requires Lua. Supply the model explicitly outside
+The Powder Toy:
 
-# Config
+```sh
+lua tests/tptasm.lua tests/demo.asm /tmp/demo.bin model=R3A0564
+# Rebuild the six assembly examples listed in tests/buildtests.lua:
+make buildtests
+```
 
-All configuration is done via CLI flags. Run `r3emu --help` for the full list.
+The compiler in [`tests/compiler/`](tests/compiler/README.md) emits R3 assembly
+and additionally requires LPEG. The three Haskell-generated ROMs do not have
+source programs in this repository.
 
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--memrows` | 64 | Amount of memory rows emulated |
-| `--cores` | 10 | Number of cores to emulate (all multiply-capable) |
-| `--targetfps` | 60 | Target FPS |
-| `--no-fpslimiter` | off | Disable the FPS limiter |
-| `--updxframes` | 10 | Frames between SDL window updates |
-| `--memdump` | off | Dump memory and disassembly after emulation |
-| `--tracedump` | off | Dump instruction trace after emulation |
-| `--tracesize` | 100000 | Trace buffer size |
-| `--term-cols` | 12 | Terminal character columns |
-| `--term-rows` | 8 | Terminal character rows |
-| `--rowsize` | 128 | Memory row size in words |
-| `--no-pixplot` | off | Disable pixel plotting |
-| `--no-smul` | off | Disallow S-type core multiplication |
-| `--stdout` | off | Mirror terminal output to stdout |
-| `--headless` | off | Run without UI (no SDL2 window) |
-| `--keyboard-input` | unset | Queue literal keyboard input bytes after emulation starts |
-| `--keyboard-input-file` | unset | Queue keyboard input bytes from a file after emulation starts |
-| `--keyboard-input-delay-cycles` | 1 | Cycles to wait before scripted keyboard input becomes available |
+## Development
 
-I think I explained everything now. For questions: technik_hea on DC
+Inside `nix develop`, or with Rust and SDL2 installed:
+
+```sh
+cargo test --locked
+cargo clippy --all-targets --locked
+cargo fmt --check
+cargo bench --bench bee_lzss --locked
+```
+
+Tests cover arithmetic, memory mapping, instruction semantics, keyboard queues,
+CLI validation, and bounded execution of batch ROMs. The benchmark runs
+`bee_lzss.bin` headlessly, excluding VM setup from the timed routine. These tests
+are not a complete hardware-conformance suite; graphical rendering and external
+hardware timing need separate validation.
+
+`make compile`, `make test`, and `make clean` wrap Cargo. The former C/C++ Meson
+build is no longer used. Existing third-party notices are retained in
+[`src/LICENSE`](src/LICENSE) and [`tests/compiler/LICENSE`](tests/compiler/LICENSE).

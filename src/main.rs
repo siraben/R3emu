@@ -87,11 +87,11 @@ struct Args {
     #[arg(long)]
     headless: bool,
 
-    /// Queue keyboard input bytes before emulation starts
+    /// Queue literal keyboard input bytes after the configured delay
     #[arg(long = "keyboard-input")]
     keyboard_input: Option<String>,
 
-    /// Queue keyboard input bytes from a file before emulation starts
+    /// Queue keyboard input bytes from a file after the configured delay
     #[arg(long = "keyboard-input-file")]
     keyboard_input_file: Option<String>,
 
