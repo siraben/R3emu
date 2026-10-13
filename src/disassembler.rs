@@ -1,5 +1,3 @@
-use crate::alu::patch_word;
-
 const REG_NAMES: [&str; 33] = [
     "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
     "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20",
@@ -28,17 +26,10 @@ pub fn disassemble(instruction: u32) -> String {
     let loi = ((instruction >> 16) & 0b1111) as u8;
     let raw_ssrc = (instruction & 0xFFFF) as u16;
 
-    let ssrc_val = patch_word(raw_ssrc as u32) as u16;
-
-    // For soii=1, display the immediate value; for soii=0, display register name
-    if soii == 0 && ssrc_val > 31 {
-        return format!("dw {}", instruction);
-    }
-
     let ssrc_str = if soii != 0 {
-        format!("{}", ssrc_val)
+        format!("{}", raw_ssrc)
     } else {
-        reg_name(ssrc_val as u8).to_string()
+        reg_name((raw_ssrc as u8) & 31).to_string()
     };
 
     // Jump condition decoding

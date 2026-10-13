@@ -1,9 +1,21 @@
-/// Patch special word values to zero.
-/// Values 0x00000000, 0x40000000, 0x80000000, 0xC0000000 all map to 0.
-/// These are exactly the values with lower 30 bits all zero.
+const PHYS_ZERO_MASK: u32 = 0x3FFFFFFF;
+
+/// Returns true if the value is one of the four physically zero values.
 #[inline(always)]
-pub fn patch_word(w: u32) -> u32 {
-    if w & 0x3FFFFFFF == 0 { 0 } else { w }
+pub fn is_phys_zero(w: u32) -> bool {
+    w & PHYS_ZERO_MASK == 0
+}
+
+/// Sanitize a value being written: physically zero values gain bit 29.
+#[inline(always)]
+pub fn sanitize_write(w: u32) -> u32 {
+    if is_phys_zero(w) { w | 0x20000000 } else { w }
+}
+
+/// Sanitize a value being read: physically zero values read as 0x0000001F.
+#[inline(always)]
+pub fn sanitize_read(w: u32) -> u32 {
+    if is_phys_zero(w) { 0x0000001F } else { w }
 }
 
 /// Mask a word to the lower 16 bits (ALU word width).
@@ -31,17 +43,17 @@ pub fn set_flag(flags: &mut u8, index: u8, state: bool) {
 
 #[inline(always)]
 fn add_common(a: u32, b: u32, flags: &mut u8, carry_in: u8, update: bool) -> u32 {
-    let a = alu_word_limit(patch_word(a));
-    let b = alu_word_limit(patch_word(b));
+    let a = alu_word_limit(a);
+    let b = alu_word_limit(b);
     let out = a + b + carry_in as u32;
-    let out = patch_word(out);
     if update {
-        set_flag(flags, 0, alu_word_limit(out) == 0); // zero
-        set_flag(flags, 1, (alu_word_limit(out) >> 15) != 0); // sign
+        let out16 = alu_word_limit(out);
+        set_flag(flags, 0, out16 == 0); // zero
+        set_flag(flags, 1, (out16 >> 15) != 0); // sign
         set_flag(flags, 2, out > 0xFFFF); // carry
         let a_sign = (a >> 15) & 1;
         let b_sign = (b >> 15) & 1;
-        let out_sign = (alu_word_limit(out) >> 15) & 1;
+        let out_sign = (out16 >> 15) & 1;
         set_flag(flags, 3, a_sign == b_sign && out_sign != a_sign); // overflow
     }
     alu_word_limit(out)
@@ -79,30 +91,30 @@ pub fn sbb(a: u32, b: u32, flags: &mut u8, carry_in: bool, update: bool) -> u32 
 
 #[inline]
 pub fn mul(a: u32, b: u32) -> u32 {
-    let a = alu_word_limit(patch_word(a));
-    let b = alu_word_limit(patch_word(b));
+    let a = alu_word_limit(a);
+    let b = alu_word_limit(b);
     (a.wrapping_mul(b)) & 0xFFFF
 }
 
 #[inline]
 pub fn mulh(a: u32, b: u32) -> u32 {
-    let a = alu_word_limit(patch_word(a));
-    let b = alu_word_limit(patch_word(b));
+    let a = alu_word_limit(a);
+    let b = alu_word_limit(b);
     (a.wrapping_mul(b)) >> 16
 }
 
 #[inline]
 pub fn muls(a: u32, b: u32) -> u32 {
-    let a = alu_word_limit(patch_word(a)) as u16 as i16 as i32;
-    let b = alu_word_limit(patch_word(b)) as u16 as i16 as i32;
+    let a = alu_word_limit(a) as u16 as i16 as i32;
+    let b = alu_word_limit(b) as u16 as i16 as i32;
     let out = a.wrapping_mul(b);
     (out as u32) >> 16
 }
 
 #[inline]
 pub fn mulx(a: u32, b: u32) -> u32 {
-    let a = alu_word_limit(patch_word(a));
-    let b = (alu_word_limit(patch_word(b)) as u16 as i16 as i32) as u32;
+    let a = alu_word_limit(a);
+    let b = (alu_word_limit(b) as u16 as i16 as i32) as u32;
     let out = a.wrapping_mul(b);
     out >> 16
 }
@@ -110,13 +122,12 @@ pub fn mulx(a: u32, b: u32) -> u32 {
 /// Shift left. Result is masked to 16 bits per the ALU word width.
 #[inline]
 pub fn shl(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
-    let target = patch_word(target);
-    let pos = patch_word(pos) & 0b1111;
+    let target = alu_word_limit(target);
+    let pos = pos & 0b1111;
     let out = alu_word_limit(target << pos);
-    let out = patch_word(out);
     if update {
         set_flag(flags, 0, out == 0);
-        set_flag(flags, 1, (alu_word_limit(out) >> 15) != 0);
+        set_flag(flags, 1, (out >> 15) != 0);
     }
     out
 }
@@ -124,52 +135,42 @@ pub fn shl(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
 /// Shift right. Target is masked to 16 bits before shifting per ALU word width.
 #[inline]
 pub fn shr(target: u32, pos: u32, flags: &mut u8, update: bool) -> u32 {
-    let target = alu_word_limit(patch_word(target));
-    let pos = patch_word(pos) & 0b1111;
+    let target = alu_word_limit(target);
+    let pos = pos & 0b1111;
     let out = target >> pos;
-    let out = patch_word(out);
     if update {
         set_flag(flags, 0, out == 0);
-        set_flag(flags, 1, (alu_word_limit(out) >> 15) != 0);
+        set_flag(flags, 1, (out >> 15) != 0);
     }
     out
 }
 
 #[inline]
 pub fn and(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
-    let a = patch_word(a);
-    let b = patch_word(b);
-    let out = patch_word(a & b);
+    let out = alu_word_limit(a) & alu_word_limit(b);
     if update {
-        set_flag(flags, 2, false); // carry cleared
         set_flag(flags, 0, out == 0);
-        set_flag(flags, 1, (alu_word_limit(out) >> 15) != 0);
+        set_flag(flags, 1, (out >> 15) != 0);
     }
     out
 }
 
 #[inline]
 pub fn or(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
-    let a = patch_word(a);
-    let b = patch_word(b);
-    let out = patch_word(a | b);
+    let out = alu_word_limit(a) | alu_word_limit(b);
     if update {
-        set_flag(flags, 2, false);
         set_flag(flags, 0, out == 0);
-        set_flag(flags, 1, (alu_word_limit(out) >> 15) != 0);
+        set_flag(flags, 1, (out >> 15) != 0);
     }
     out
 }
 
 #[inline]
 pub fn xor(a: u32, b: u32, flags: &mut u8, update: bool) -> u32 {
-    let a = patch_word(a);
-    let b = patch_word(b);
-    let out = patch_word(a ^ b);
+    let out = alu_word_limit(a) ^ alu_word_limit(b);
     if update {
-        set_flag(flags, 2, false);
         set_flag(flags, 0, out == 0);
-        set_flag(flags, 1, (alu_word_limit(out) >> 15) != 0);
+        set_flag(flags, 1, (out >> 15) != 0);
     }
     out
 }

@@ -1,4 +1,4 @@
-use crate::alu::patch_word;
+use crate::alu::{sanitize_read, sanitize_write};
 use crate::keyboard::Keyboard;
 use crate::terminal::Terminal;
 
@@ -7,6 +7,9 @@ const IO_BASE: u16 = 0x9F80;
 pub struct Bus {
     pub ram: Vec<u32>,
     mem_size: u16,
+    mem_rows: u16,
+    row_size: u16,
+    mem_p2rows: u16,
     pub terminal: Terminal,
     pub keyboard: Keyboard,
     pub has_pixplot: bool,
@@ -20,10 +23,15 @@ impl Bus {
         term_rows: u8,
         has_pixplot: bool,
     ) -> Self {
-        let mem_size = rows as u16 * row_size;
+        let mem_rows = rows as u16;
+        let mem_size = mem_rows * row_size;
+        let mem_p2rows = mem_rows.next_power_of_two();
         Bus {
             ram: vec![0; mem_size as usize],
             mem_size,
+            mem_rows,
+            row_size,
+            mem_p2rows,
             terminal: Terminal::new(term_cols, term_rows),
             keyboard: Keyboard::new(),
             has_pixplot,
@@ -36,33 +44,61 @@ impl Bus {
     }
 
     #[inline(always)]
+    fn map_addr(&self, addr: u16) -> (usize, bool) {
+        let row_size = self.row_size;
+        let block = addr / row_size;
+        let offset = addr % row_size;
+        let mem_rows = self.mem_rows;
+        let mem_p2rows = self.mem_p2rows;
+
+        let (row, writable) = if block < mem_rows {
+            (block, true)
+        } else if block < mem_p2rows {
+            (mem_rows - 1, false)
+        } else {
+            let mirror = block % mem_p2rows;
+            if mirror < mem_rows {
+                (mirror, false)
+            } else {
+                (mem_rows - 1, false)
+            }
+        };
+
+        let idx = row as usize * row_size as usize + offset as usize;
+        (idx, writable)
+    }
+
+    #[inline(always)]
     pub fn read(&mut self, addr: u16) -> u32 {
-        let ms = self.mem_size;
-        // Fast path: RAM access (vast majority of reads)
-        if addr < ms {
-            return patch_word(unsafe { *self.ram.get_unchecked(addr as usize) });
+        // I/O range reads
+        if addr >= IO_BASE && addr < IO_BASE + 0x80 {
+            if addr == IO_BASE {
+                return self.keyboard.get_key() as u32;
+            }
+            return 0;
         }
-        // Keyboard read hook
-        if addr == IO_BASE {
-            return self.keyboard.get_key() as u32;
-        }
-        0
+        // Internal memory mapping (including mirrors)
+        let (idx, _) = self.map_addr(addr);
+        sanitize_read(unsafe { *self.ram.get_unchecked(idx) })
     }
 
     #[inline(always)]
     pub fn write(&mut self, addr: u16, val: u32) {
-        let ms = self.mem_size;
-        // Fast path: RAM access (vast majority of writes)
-        if addr < ms {
-            unsafe { *self.ram.get_unchecked_mut(addr as usize) = patch_word(val) };
+        // I/O hooks
+        if addr >= IO_BASE && addr < IO_BASE + 0x80 {
+            self.write_io(addr, sanitize_write(val));
             return;
         }
-        self.write_io(addr, val);
+
+        let (idx, writable) = self.map_addr(addr);
+        if writable {
+            unsafe { *self.ram.get_unchecked_mut(idx) = sanitize_write(val) };
+        }
     }
 
     #[cold]
     fn write_io(&mut self, addr: u16, val: u32) {
-        // Write hooks: check I/O address ranges (value is NOT patched for hooks)
+        // Write hooks: check I/O address ranges
         match addr {
             // Scroll print: 0x9F80..=0x9FBF (offsets 0x00..=0x3F)
             0x9F80..=0x9FBF => {
@@ -101,5 +137,39 @@ impl Bus {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_memory_map_and_mirror() {
+        let mut bus = Bus::new(3, 128, 1, 1, false);
+
+        bus.write(0x0001, 0x12345678); // row 0
+        bus.write(0x0080, 0x11112222); // row 1
+        bus.write(0x0100, 0x33334444); // row 2
+
+        // Block 3 maps to last row, read-only
+        bus.write(0x0180, 0x55556666);
+        assert_eq!(bus.read(0x0100), 0x33334444);
+        assert_eq!(bus.read(0x0180), 0x33334444);
+
+        // External mirrors (read-only)
+        assert_eq!(bus.read(0x0201), 0x12345678); // mirror of row 0
+        assert_eq!(bus.read(0x0280), 0x11112222); // mirror of row 1
+        assert_eq!(bus.read(0x0300), 0x33334444); // mirror of row 2
+    }
+
+    #[test]
+    fn test_phys_zero_sanitize() {
+        let mut bus = Bus::new(1, 128, 1, 1, false);
+        bus.write(0x0000, 0x00000000);
+        assert_eq!(bus.read(0x0000), 0x20000000);
+
+        bus.ram[0] = 0x00000000;
+        assert_eq!(bus.read(0x0000), 0x0000001F);
     }
 }
