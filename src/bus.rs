@@ -71,7 +71,7 @@ impl Bus {
     #[inline(always)]
     pub fn read(&mut self, addr: u16) -> u32 {
         // I/O range reads
-        if addr >= IO_BASE && addr < IO_BASE + 0x80 {
+        if (IO_BASE..IO_BASE + 0x80).contains(&addr) {
             if addr == IO_BASE {
                 return self.keyboard.get_key() as u32;
             }
@@ -85,7 +85,7 @@ impl Bus {
     #[inline(always)]
     pub fn write(&mut self, addr: u16, val: u32) {
         // I/O hooks
-        if addr >= IO_BASE && addr < IO_BASE + 0x80 {
+        if (IO_BASE..IO_BASE + 0x80).contains(&addr) {
             self.write_io(addr, sanitize_write(val));
             return;
         }

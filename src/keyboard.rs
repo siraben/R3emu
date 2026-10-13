@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+#[derive(Default)]
 pub struct Keyboard {
     keycode: u8,
     queued: VecDeque<u8>,

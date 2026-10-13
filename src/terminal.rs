@@ -116,8 +116,8 @@ impl Terminal {
     /// `offset` = address offset from 0x9FE0 (lower 4 bits = color index).
     pub fn plot_pixel(&mut self, val: u32, offset: u16) {
         let color_index = (offset & 0b1111) as u8;
-        let row = ((val >> 8) & 0xFF) as u32;
-        let column = (val & 0xFF) as u32;
+        let row = (val >> 8) & 0xFF;
+        let column = val & 0xFF;
         self.set_pix(column, row, color_index);
     }
 
