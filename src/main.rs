@@ -232,8 +232,8 @@ fn main() {
         let sdl_context = sdl2::init().expect("Failed to init SDL2");
         let video = sdl_context.video().expect("Failed to init SDL2 video");
 
-        let logical_w = 8 * args.term_cols as u32;
-        let logical_h = 8 * args.term_rows as u32 + 64;
+        let logical_w = (8 * args.term_cols as u32).max(args.rowsize as u32);
+        let logical_h = 8 * args.term_rows as u32 + args.memrows as u32;
 
         let window = video
             .window("R3 Emulator", 300, 500)
@@ -317,9 +317,10 @@ fn main() {
                 // Render memory visualization (below terminal area)
                 let term_pix_h = 8 * args.term_rows as i32;
                 for row in 0..args.memrows as i32 {
-                    for col in 0..128i32 {
-                        let addr = (col + 128 * row) as u16;
-                        let val = vm.bus.read(addr);
+                    for col in 0..args.rowsize as i32 {
+                        let addr = (col + args.rowsize as i32 * row) as usize;
+                        // Rendering must not trigger memory-mapped I/O reads.
+                        let val = vm.bus.ram[addr];
                         let color = calc_mem_color(val);
                         canvas.set_draw_color(Color::RGB(color[0], color[1], color[2]));
                         let _ = canvas.draw_point(Point::new(col, row + term_pix_h));
