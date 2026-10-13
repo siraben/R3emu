@@ -8,16 +8,24 @@ rewritten in Rust by siraben.
 
 ## Features
 
-- R3 instruction execution, flags, delayed memory operations, and read-only RAM mirrors.
-- SDL2 terminal, 16-color pixel plotting, keyboard input, and RAM visualization.
+- Explicit execution-unit slots, memory service cycles, prefetch, bus retries, and RAM mirrors.
+- Timed terminal rendering, automatic-scroll backpressure, programmable glyphs and directed/masked scrolling.
+- SDL2 display, 16-color pixel plotting, keyboard input, and RAM visualization.
 - Headless execution, terminal output to stdout, and scripted keyboard input.
 - Memory/disassembly dumps, bounded instruction traces, and a Criterion benchmark.
 - A reusable Rust library exposing the VM, bus, ALU, and peripherals.
 
-The CLI uses ten multiply-capable (M-type) execution units by default. These
-execute sequentially as one computer, not as host threads. The library also
-exposes F- and S-type units. This is not a simulation of all Powder Toy hardware
-or external peripheral timing.
+One VM cycle is one simulated Powder Toy frame. Its execution units run
+sequentially as one computer, not as host threads. The generic CLI profile uses
+64 RAM rows and ten M units. `--profile showcase` selects save **3236906**:
+16 rows, `msfffmsfff`, saved initial registers, and a terminal on unit 9.
+
+The CPU and terminal are checked against actual headless native TPT observations,
+including every execution-unit slot and display frame, not just final images.
+See [native fixtures and coverage](tests/fixtures/r316/README.md) and the
+[repair verification](docs/conformance-verification.md). This is a bounded
+R316 v2 conformance target, not a simulation of arbitrary TPT particles, every
+save revision, or unimplemented peripherals such as the R216/breakout adapters.
 
 ## Build
 
@@ -59,16 +67,24 @@ r3emu tests/bee_lzss.bin --headless --stdout
 
 # Supply keyboard bytes after one VM cycle (the default delay)
 r3emu tests/wordle.bin --keyboard-input-file guesses.txt
+
+# Run RAM exported from save 3236906 with its actual configuration
+r3emu showcase.bin --profile showcase --headless --max-cycles 500
+
+# Explicit spatial layout and peripheral connector
+r3emu program.bin --memrows 16 --core-types msfffmsfff --terminal-unit 9
 ```
 
 Use `./result/bin/r3emu` or `./target/release/r3emu` if the executable is not on
-`PATH`. The window closes when the program halts. Programs that wait for input
-or loop forever will keep running; headless mode has no automatic timeout.
+`PATH`. After HLT, pending display stages finish before the window closes or
+headless execution returns. Programs waiting for input or an unserved bus address
+keep running unless `--max-cycles` bounds the run; reaching this bound does not
+pretend that the CPU halted.
 
-ROMs contain native-endian 32-bit words, matching the original emulator and
-bundled binaries on little-endian hosts. Empty, partial-word, and oversized
-inputs are rejected. Unloaded RAM starts physically zero; loaded words are
-sanitized according to R3 write semantics.
+ROMs contain **little-endian** 32-bit words. Empty, partial-word, and oversized
+inputs are rejected. The CLI initializes unused RAM to R3 logical zero
+(`0x20000000`); loaded words are sanitized according to R3 write semantics.
+The bundled `tests/demo.bin` is not the RAM image of showcase save 3236906.
 
 Scripted input is consumed one byte per keyboard read. Literal `--keyboard-input`
 bytes precede bytes from `--keyboard-input-file` when both are supplied. The
@@ -83,15 +99,20 @@ Run `r3emu --help` for the authoritative list.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--memrows` | 64 | RAM rows; nonzero |
+| `--profile` | generic | `generic` or `showcase`; explicit options override profile defaults |
+| `--memrows` | profile | RAM rows; 64 generic, 16 showcase; nonzero |
 | `--rowsize` | 128 | Words per RAM row; nonzero; total RAM must fit in 65,535 words |
-| `--cores` | 10 | M-type execution units per VM cycle; nonzero |
+| `--cores` | profile | Override with this many M units; conflicts with `--core-types` |
+| `--core-types` | profile | Spatial M/S/F layout, e.g. `msfffmsfff` |
+| `--terminal-unit` | last | Zero-based terminal connector unit |
+| `--bare-bus` | off | Disconnect peripherals/terminators and expose read-only RAM mirrors |
+| `--max-cycles` | unlimited | Bound all simulated frames, including display draining |
 | `--targetfps` | 60 | Graphical VM cycles per second; 0 disables limiting |
 | `--no-fpslimiter` | off | Disable graphical rate limiting |
 | `--updxframes` | 10 | VM cycles between redraws (0 also redraws every cycle) |
-| `--term-cols` / `--term-rows` | 12 / 8 | Terminal size in 8×8 character cells; nonzero |
+| `--term-cols` / `--term-rows` | 12 / 8 | Terminal size in 8×8 cells; each dimension 1–29 |
 | `--no-pixplot` | off | Disable pixel-plot I/O |
-| `--no-smul` | off | Disable S-type multiplication (no effect on the CLI's M-only configuration) |
+| `--no-smul` | off | Diagnostic override disabling S-type multiplication |
 | `--headless` | off | No SDL window or rate limiting |
 | `--stdout` | off | Mirror printed terminal characters to stdout |
 | `--keyboard-input` | unset | Literal keyboard input bytes |
@@ -112,7 +133,19 @@ This prints `2^64 = 18446744073709551616` and waits for more input; use Ctrl-C
 to stop it. The triangle program takes substantially longer to evaluate.
 
 The standard R3 memory layout uses 128 words per row and up to 64 rows.
-Other dimensions are emulator extensions, not standard hardware configurations.
+Other RAM dimensions are emulator extensions, not standard hardware configurations.
+Conventional buses inject wait cycles for external accesses not handled on the
+current unit. Bare-bus mirrors are a separate configuration, not a fallback for
+missing devices. The terminal occupies `0x9F80..0x9FFF`; writes during an automatic
+scroll retry wait, while its separate keyboard reader remains available.
+
+For the pinned hardware, ordinary glyph/scroll and pixel changes become visible
+two frames after acknowledgement. Automatic scrolling adds a retry frame.
+The native circuit packs custom character registers as left/right halves in
+column order 0,2,1,3, despite the reference manual's even/odd names. The emulator
+follows the measured circuit. Carry/overflow values left unspecified by the ISA
+also follow the native parallel adder; programs should not rely on them for
+portability across R3 variants.
 
 Dumps overwrite `memdump.bin`, `memdumpdisasm.asm`, `tracedump.bin`, and
 `tracedumpdisasm.asm` in the working directory as applicable. Despite their
@@ -155,16 +188,27 @@ Inside `nix develop`, or with Rust and SDL2 installed:
 
 ```sh
 cargo test --locked
-cargo clippy --all-targets --locked
+cargo clippy --all-targets --locked -- -D warnings
 cargo fmt --check
 cargo bench --bench bee_lzss --locked
 ```
 
-Tests cover arithmetic, memory mapping, instruction semantics, keyboard queues,
-CLI validation, bounded execution of batch ROMs, and interactive ROM startup. The benchmark runs
-`bee_lzss.bin` headlessly, excluding VM setup from the timed routine. These tests
-are not a complete hardware-conformance suite; graphical rendering and external
-hardware timing need separate validation.
+Tests include native slot/frame fixtures, 128 independently checked arithmetic
+results, 192 add/sub/ADC/SBB flag checks, every ROM glyph, all 64 custom-glyph bits,
+bus and pipeline boundary cases, and 8,704 small-grid scrolling comparisons. They also
+cover CLI validation, batch ROM execution and interactive ROM startup. Native
+fixtures run offline; the capture/export tools are under `tools/conformance/`.
+
+`MachineConfig` provides validated profiles; `Vm::cycle_with_observer` exposes
+post-slot state without duplicating execution logic. The
+`conformance_trace` example records the production VM for differential checks.
+Direct bus `read`/`write` and terminal drawing methods are untimed inspection or
+rendering primitives; use VM cycles for hardware timing.
+
+The Criterion benchmark runs `bee_lzss.bin` headlessly, excluding VM setup from
+the timed routine. This is not exhaustive ISA/state-space validation. Native
+empty-keyboard and busy-read behavior is covered; SDL event translation, every
+showcase demo selection and arbitrary external devices require separate validation.
 
 `make compile`, `make test`, and `make clean` wrap Cargo. The former C/C++ Meson
 build is no longer used. Existing third-party notices are retained in
