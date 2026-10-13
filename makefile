@@ -1,14 +1,12 @@
+.PHONY: compile clean prepare test buildtests
+
 compile:
-	meson compile -C build
+	cargo build --release --locked
 clean:
-	-rm -rf build
-	-rm -rf subprojects
-prepare: clean
-	mkdir subprojects
-	meson wrap install sdl2
-	meson setup build
+	cargo clean
+prepare:
+	cargo fetch --locked
 test:
-	meson test -C build
+	cargo test --locked
 buildtests:
-	cd tests;lua buildtests.lua
-	
+	cd tests && lua buildtests.lua

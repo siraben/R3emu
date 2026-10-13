@@ -33,6 +33,7 @@
             pkgs.rustc
             pkgs.rust-analyzer
             pkgs.clippy
+            pkgs.rustfmt
           ];
         };
 

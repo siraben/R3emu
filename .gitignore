@@ -1,2 +1,10 @@
-build
-subprojects
+/build/
+/builddir/
+/subprojects/
+/target/
+/result
+/result-*
+/memdump.bin
+/memdumpdisasm.asm
+/tracedump.bin
+/tracedumpdisasm.asm
