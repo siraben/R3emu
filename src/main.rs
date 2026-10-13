@@ -8,18 +8,11 @@ use std::fs;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-mod alu;
-mod bus;
-mod disassembler;
-mod font;
-mod keyboard;
-mod terminal;
-mod vm;
-
-use bus::Bus;
-use terminal::COLOR_TABLE;
-use vm::{CoreType, Vm};
-use alu::sanitize_write;
+use r3emu::alu::sanitize_write;
+use r3emu::bus::Bus;
+use r3emu::disassembler;
+use r3emu::terminal::COLOR_TABLE;
+use r3emu::vm::{CoreType, Vm};
 
 #[derive(Parser)]
 #[command(
