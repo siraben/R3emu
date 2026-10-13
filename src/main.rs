@@ -150,6 +150,15 @@ fn main() {
         }
     };
 
+    if file_bytes.is_empty() || file_bytes.len() % 4 != 0 {
+        eprintln!("Input must contain a nonempty sequence of 32-bit words");
+        std::process::exit(2);
+    }
+    if file_bytes.len() / 4 > usize::from(args.memrows) * usize::from(args.rowsize) {
+        eprintln!("Input exceeds configured RAM capacity");
+        std::process::exit(2);
+    }
+
     // Create VM
     let bus = Bus::new(
         args.memrows,
