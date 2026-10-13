@@ -16,12 +16,12 @@ fn load_vm() -> Vm {
     let words_to_load = words_in_file.min(mem_size);
     for i in 0..words_to_load {
         let offset = i * 4;
-        vm.bus.ram[i] = u32::from_ne_bytes([
+        vm.bus.ram[i] = r3emu::alu::sanitize_write(u32::from_ne_bytes([
             file_bytes[offset],
             file_bytes[offset + 1],
             file_bytes[offset + 2],
             file_bytes[offset + 3],
-        ]);
+        ]));
     }
 
     vm
