@@ -24,7 +24,8 @@ impl Bus {
         has_pixplot: bool,
     ) -> Self {
         let mem_rows = rows as u16;
-        let mem_size = mem_rows * row_size;
+        assert!(rows > 0 && row_size > 0, "memory dimensions must be nonzero");
+        let mem_size = mem_rows.checked_mul(row_size).expect("memory exceeds 65535 words");
         let mem_p2rows = mem_rows.next_power_of_two();
         Bus {
             ram: vec![0; mem_size as usize],
@@ -79,7 +80,7 @@ impl Bus {
         }
         // Internal memory mapping (including mirrors)
         let (idx, _) = self.map_addr(addr);
-        sanitize_read(unsafe { *self.ram.get_unchecked(idx) })
+        sanitize_read(self.ram[idx])
     }
 
     #[inline(always)]
@@ -92,7 +93,7 @@ impl Bus {
 
         let (idx, writable) = self.map_addr(addr);
         if writable {
-            unsafe { *self.ram.get_unchecked_mut(idx) = sanitize_write(val) };
+            self.ram[idx] = sanitize_write(val);
         }
     }
 
@@ -143,6 +144,24 @@ impl Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[should_panic(expected = "memory dimensions must be nonzero")]
+    fn rejects_zero_rows() {
+        Bus::new(0, 128, 1, 1, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "memory dimensions must be nonzero")]
+    fn rejects_zero_row_size() {
+        Bus::new(1, 0, 1, 1, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "memory exceeds 65535 words")]
+    fn rejects_memory_size_overflow() {
+        Bus::new(2, 32768, 1, 1, false);
+    }
 
     #[test]
     fn test_memory_map_and_mirror() {
