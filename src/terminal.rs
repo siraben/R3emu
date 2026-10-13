@@ -69,7 +69,7 @@ impl Terminal {
     fn set_pix(&mut self, x: u32, y: u32, color_index: u8) {
         let stride = 8 * self.charsnh as u32;
         let idx = x + y * stride;
-        if (idx as usize) < self.pixbuf.len() {
+        if x < self.pixel_width() && y < self.pixel_height() {
             self.pixbuf[idx as usize] = color_index;
         }
     }
@@ -77,7 +77,7 @@ impl Terminal {
     fn get_pix(&self, x: u32, y: u32) -> u8 {
         let stride = 8 * self.charsnh as u32;
         let idx = x + y * stride;
-        if (idx as usize) < self.pixbuf.len() {
+        if x < self.pixel_width() && y < self.pixel_height() {
             self.pixbuf[idx as usize]
         } else {
             0
@@ -235,5 +235,20 @@ impl Terminal {
             column = sval;
         }
         self.cursor = column as u16 + ((row as u16) << 5);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn out_of_bounds_pixels_do_not_wrap_to_next_row() {
+        let mut terminal = Terminal::new(1, 1);
+        terminal.plot_pixel(8, 15);
+        assert!(terminal.pixbuf.iter().all(|&pixel| pixel == 0));
+        terminal.set_pix(0, 1, 3);
+        assert_eq!(terminal.get_pix(8, 0), 0);
+        assert_eq!(terminal.get_pix(0, 1), 3);
     }
 }
