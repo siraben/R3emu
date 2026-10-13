@@ -1,4 +1,4 @@
-use clap::{error::ErrorKind, CommandFactory, Parser};
+use clap::{error::ErrorKind, CommandFactory, Parser, ValueEnum};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -9,10 +9,18 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use r3emu::alu::sanitize_write;
-use r3emu::bus::Bus;
+use r3emu::bus::TerminalPort;
 use r3emu::disassembler;
+use r3emu::machine::{parse_cores, MachineConfig};
 use r3emu::terminal::COLOR_TABLE;
-use r3emu::vm::{CoreType, Vm};
+use r3emu::vm::Vm;
+
+#[derive(Clone, Copy, Default, ValueEnum)]
+enum Profile {
+    #[default]
+    Generic,
+    Showcase,
+}
 
 #[derive(Parser)]
 #[command(
@@ -27,13 +35,33 @@ struct Args {
     /// Input binary file
     input: String,
 
-    /// Memory rows
-    #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u8).range(1..))]
-    memrows: u8,
+    /// Machine defaults: generic (64 rows, ten M units) or save 3236906
+    #[arg(long, value_enum, default_value = "generic")]
+    profile: Profile,
 
-    /// Number of cores
-    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u8).range(1..))]
-    cores: u8,
+    /// Override memory rows (generic: 64; showcase: 16)
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..))]
+    memrows: Option<u8>,
+
+    /// Override unit count with an all-M layout (default: 10)
+    #[arg(long, conflicts_with = "core_types", value_parser = clap::value_parser!(u8).range(1..))]
+    cores: Option<u8>,
+
+    /// Explicit spatial layout, e.g. msfffmsfff (case-insensitive)
+    #[arg(long)]
+    core_types: Option<String>,
+
+    /// Zero-based terminal connector unit (default: last unit)
+    #[arg(long, conflicts_with = "bare_bus")]
+    terminal_unit: Option<usize>,
+
+    /// Disconnect peripherals and dummy terminators; expose bare RAM mirrors
+    #[arg(long)]
+    bare_bus: bool,
+
+    /// Stop after this many frames, even if the program has not halted
+    #[arg(long)]
+    max_cycles: Option<u64>,
 
     /// Target FPS
     #[arg(long, default_value_t = 60)]
@@ -123,13 +151,47 @@ fn calc_mem_color(value: u32) -> [u8; 3] {
     [r as u8, g as u8, b as u8]
 }
 
+fn configuration(args: &Args) -> Result<MachineConfig, &'static str> {
+    let mut config = match args.profile {
+        Profile::Generic => MachineConfig::default(),
+        Profile::Showcase => MachineConfig::showcase(),
+    };
+    if let Some(rows) = args.memrows {
+        config.memory_rows = rows;
+    }
+    if let Some(count) = args.cores {
+        config.cores = vec![r3emu::vm::CoreType::M; usize::from(count)];
+    }
+    if let Some(layout) = &args.core_types {
+        config.cores = parse_cores(layout)?;
+    }
+    if let Some(unit) = args.terminal_unit {
+        config.terminal_port = TerminalPort::Unit(unit);
+    }
+    if args.bare_bus {
+        config.terminal_port = TerminalPort::Disconnected;
+        config.terminate_unmapped = false;
+    }
+    config.row_size = args.rowsize;
+    config.terminal_columns = args.term_cols;
+    config.terminal_rows = args.term_rows;
+    config.pixel_plotter = !args.no_pixplot;
+    config.secondary_multiply = !args.no_smul;
+    config.validate()?;
+    Ok(config)
+}
+
+fn should_run(vm: &Vm, frames: u64, limit: Option<u64>) -> bool {
+    (!vm.halted || vm.bus.has_pending_work()) && limit.is_none_or(|limit| frames < limit)
+}
+
 fn main() {
     let args = Args::parse();
-    if u16::from(args.memrows).checked_mul(args.rowsize).is_none() {
+    let config = configuration(&args).unwrap_or_else(|error| {
         Args::command()
-            .error(ErrorKind::ValueValidation, "memory must fit in 65535 words")
-            .exit();
-    }
+            .error(ErrorKind::ValueValidation, error)
+            .exit()
+    });
 
     eprintln!("R3 emulator");
     eprintln!("Written by Justus Wolff in very late 2025-2026");
@@ -151,29 +213,16 @@ fn main() {
         eprintln!("Input must contain a nonempty sequence of 32-bit words");
         std::process::exit(2);
     }
-    if file_bytes.len() / 4 > usize::from(args.memrows) * usize::from(args.rowsize) {
+    if file_bytes.len() / 4 > usize::from(config.memory_rows) * usize::from(config.row_size) {
         eprintln!("Input exceeds configured RAM capacity");
         std::process::exit(2);
     }
 
-    // Create VM
-    let bus = Bus::new(
-        args.memrows,
-        args.rowsize,
-        args.term_cols,
-        args.term_rows,
-        !args.no_pixplot,
-    );
-    let mem_size = bus.mem_size() as usize;
-
-    let cores = vec![CoreType::M; args.cores as usize];
-    let trace_size = if args.tracedump {
-        Some(args.tracesize)
-    } else {
-        None
-    };
-
-    let mut vm = Vm::new(bus, cores, !args.no_smul, trace_size);
+    let trace_size = args.tracedump.then_some(args.tracesize);
+    let mut vm = config
+        .build(trace_size)
+        .expect("configuration was validated");
+    let mem_size = usize::from(vm.bus.mem_size());
     vm.bus.terminal.mirror_stdout = args.stdout;
     let mut scripted_keyboard_input = Vec::new();
     if let Some(input) = args.keyboard_input.as_ref() {
@@ -191,30 +240,24 @@ fn main() {
     let mut keyboard_input_queued = scripted_keyboard_input.is_empty();
     let mut elapsed_cycles = 0u64;
 
-    // Load binary into memory (native byte order, matching C memcpy behavior)
+    // ROM words have a fixed little-endian representation, independent of host.
     eprintln!("Reading into memory...");
-    let words_in_file = file_bytes.len() / 4;
-    let words_to_load = words_in_file.min(mem_size);
-    for i in 0..words_to_load {
-        let offset = i * 4;
-        vm.bus.ram[i] = sanitize_write(u32::from_ne_bytes([
-            file_bytes[offset],
-            file_bytes[offset + 1],
-            file_bytes[offset + 2],
-            file_bytes[offset + 3],
-        ]));
+    for (cell, bytes) in vm.bus.ram.iter_mut().zip(file_bytes.chunks_exact(4)) {
+        *cell = sanitize_write(u32::from_le_bytes(
+            bytes.try_into().expect("four-byte chunk"),
+        ));
     }
 
     eprintln!(
-        "Target fps: {}\nTarget ips: {}",
+        "Target fps: {}\nTarget execution-unit slots/s: {}",
         args.targetfps,
-        args.targetfps as u64 * args.cores as u64
+        u64::from(args.targetfps) * config.cores.len() as u64
     );
     eprintln!("Emulation started.");
 
     if args.headless {
-        // Headless mode: run VM without SDL2
-        while !vm.halted {
+        // Drain pending display stages after HLT, just as the native engine does.
+        while should_run(&vm, elapsed_cycles, args.max_cycles) {
             if !keyboard_input_queued && elapsed_cycles >= args.keyboard_input_delay_cycles {
                 vm.bus
                     .keyboard
@@ -230,7 +273,7 @@ fn main() {
         let video = sdl_context.video().expect("Failed to init SDL2 video");
 
         let logical_w = (8 * args.term_cols as u32).max(args.rowsize as u32);
-        let logical_h = 8 * args.term_rows as u32 + args.memrows as u32;
+        let logical_h = 8 * args.term_rows as u32 + u32::from(config.memory_rows);
 
         let window = video
             .window("R3 Emulator", 300, 500)
@@ -260,8 +303,9 @@ fn main() {
         };
 
         let mut frame: u64 = 0;
+        let mut quit = false;
 
-        while !vm.halted {
+        while !quit && should_run(&vm, elapsed_cycles, args.max_cycles) {
             let frame_start = Instant::now();
 
             if !keyboard_input_queued && elapsed_cycles >= args.keyboard_input_delay_cycles {
@@ -277,7 +321,7 @@ fn main() {
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } => {
-                        vm.halted = true;
+                        quit = true;
                     }
                     Event::KeyDown {
                         keycode: Some(key), ..
@@ -310,10 +354,11 @@ fn main() {
             }
 
             frame += 1;
-            if frame >= args.updxframes {
+            if frame >= args.updxframes || quit || !should_run(&vm, elapsed_cycles, args.max_cycles)
+            {
                 // Render memory visualization (below terminal area)
                 let term_pix_h = 8 * args.term_rows as i32;
-                for row in 0..args.memrows as i32 {
+                for row in 0..i32::from(config.memory_rows) {
                     for col in 0..args.rowsize as i32 {
                         let addr = (col + args.rowsize as i32 * row) as usize;
                         // Rendering must not trigger memory-mapped I/O reads.
@@ -356,7 +401,15 @@ fn main() {
         }
     }
 
-    eprintln!("Emulation finished at IP '{}'", vm.ip);
+    eprintln!(
+        "Emulation stopped after {elapsed_cycles} frames at IP '{}'{}",
+        vm.ip,
+        if vm.halted {
+            " (halted)"
+        } else {
+            " (interrupted or frame limit)"
+        }
+    );
 
     // Memory dump
     if args.memdump {

@@ -1,38 +1,26 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use r3emu::bus::Bus;
-use r3emu::vm::{CoreType, Vm};
-use std::fs;
+use r3emu::alu::sanitize_write;
+use r3emu::machine::MachineConfig;
+use r3emu::vm::Vm;
 
 fn load_vm() -> Vm {
-    let file_bytes = fs::read("tests/bee_lzss.bin").expect("failed to read tests/bee_lzss.bin");
-
-    let bus = Bus::new(64, 128, 12, 8, true);
-    let mem_size = bus.mem_size() as usize;
-
-    let cores = vec![CoreType::M; 10];
-    let mut vm = Vm::new(bus, cores, true, None);
-
-    let words_in_file = file_bytes.len() / 4;
-    let words_to_load = words_in_file.min(mem_size);
-    for i in 0..words_to_load {
-        let offset = i * 4;
-        vm.bus.ram[i] = r3emu::alu::sanitize_write(u32::from_ne_bytes([
-            file_bytes[offset],
-            file_bytes[offset + 1],
-            file_bytes[offset + 2],
-            file_bytes[offset + 3],
-        ]));
+    let bytes = include_bytes!("../tests/bee_lzss.bin");
+    let mut vm = MachineConfig::default().build(None).unwrap();
+    assert_eq!(bytes.len() % 4, 0);
+    assert!(bytes.len() / 4 <= vm.bus.ram.len());
+    for (cell, word) in vm.bus.ram.iter_mut().zip(bytes.chunks_exact(4)) {
+        *cell = sanitize_write(u32::from_le_bytes(word.try_into().unwrap()));
     }
-
     vm
 }
 
 fn bench_bee_lzss(c: &mut Criterion) {
     c.bench_function("bee_lzss_headless", |b| {
         b.iter_with_setup(load_vm, |mut vm| {
-            while !vm.halted {
+            while !vm.halted || vm.bus.has_pending_work() {
                 vm.cycle();
             }
+            std::hint::black_box(vm);
         });
     });
 }
