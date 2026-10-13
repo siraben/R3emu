@@ -55,7 +55,7 @@ installed with `brew install sdl2`; on Debian/Ubuntu, with
 r3emu tests/demo.bin
 
 # Run at full speed without a window; ROM output on stdout, diagnostics on stderr
-r3emu tests/bignum_pow2.bin --headless --stdout
+r3emu tests/bee_lzss.bin --headless --stdout
 
 # Supply keyboard bytes after one VM cycle (the default delay)
 r3emu tests/wordle.bin --keyboard-input-file guesses.txt
@@ -100,6 +100,16 @@ Run `r3emu --help` for the authoritative list.
 | `--memdump` | off | Write memory and disassembly after emulation |
 | `--tracedump` | off | Collect and write an instruction trace |
 | `--tracesize` | 100000 | Maximum trace entries; retains the first entries, not a ring buffer |
+
+The Haskell ROMs `bignum_pow2.bin` and `triangle.bin` wait for a key before
+starting evaluation and do not automatically halt. For example:
+
+```sh
+r3emu tests/bignum_pow2.bin --headless --stdout --keyboard-input x
+```
+
+This prints `2^64 = 18446744073709551616` and waits for more input; use Ctrl-C
+to stop it. The triangle program takes substantially longer to evaluate.
 
 The standard R3 memory layout uses 128 words per row and up to 64 rows.
 Other dimensions are emulator extensions, not standard hardware configurations.
@@ -151,7 +161,7 @@ cargo bench --bench bee_lzss --locked
 ```
 
 Tests cover arithmetic, memory mapping, instruction semantics, keyboard queues,
-CLI validation, and bounded execution of batch ROMs. The benchmark runs
+CLI validation, bounded execution of batch ROMs, and interactive ROM startup. The benchmark runs
 `bee_lzss.bin` headlessly, excluding VM setup from the timed routine. These tests
 are not a complete hardware-conformance suite; graphical rendering and external
 hardware timing need separate validation.
