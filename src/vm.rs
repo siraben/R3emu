@@ -1,18 +1,40 @@
 use crate::alu::*;
-use crate::bus::Bus;
+use crate::bus::{Bus, BusRequest, BusResponse};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CoreType {
     F = 0,
     S = 1,
     M = 2,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum SchMode {
-    Load,
-    Store,
-    Idle,
+#[derive(Clone, Copy)]
+enum Pipeline {
+    Execute,
+    Load { register: u8 },
+    Store { address: u16, value: u32 },
+}
+
+/// Native R3 control-state bits after an execution-unit slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ExecutionState {
+    Execute = 1,
+    Load = 2,
+    Store = 4,
+    Halted = 8,
+}
+
+/// Post-slot observation; request is the incoming bus transaction.
+#[derive(Clone, Copy, Debug)]
+pub struct SlotTrace {
+    pub core: usize,
+    pub pc: u16,
+    pub state: ExecutionState,
+    /// Native bit order: carry, overflow, zero, sign (least significant first).
+    pub flags: u8,
+    pub request: BusRequest,
+    pub waited: bool,
 }
 
 pub struct TraceEntry {
@@ -28,8 +50,21 @@ pub struct Trace {
 
 #[derive(Clone, Copy)]
 struct MulInfo {
-    p_val: u16,
-    s_val: u16,
+    instruction: u32,
+}
+
+impl MulInfo {
+    fn permits_secondary(self, instruction: u32) -> bool {
+        // The S unit reuses the preceding M unit's product. Hardware compares
+        // operand encodings, not values; destination and multiply variant may
+        // differ. Even an otherwise harmless alias (including r0) is rejected.
+        let same_operands = (self.instruction ^ instruction) & 0x41FE_FFFF == 0;
+        let destination = (self.instruction >> 25) & 31;
+        let primary = (self.instruction >> 20) & 31;
+        let secondary = self.instruction & 31;
+        let immediate = self.instruction & (1 << 30) != 0;
+        same_operands && destination != primary && (immediate || destination != secondary)
+    }
 }
 
 pub struct Vm {
@@ -40,10 +75,10 @@ pub struct Vm {
     pub halted: bool,
     pub cores: Vec<CoreType>,
     pub allow_smul: bool,
-    sch_addr: u16,
-    sch_mode: SchMode,
-    sch_reg: u8,
-    sch_value: u32,
+    pipeline: Pipeline,
+    request: BusRequest,
+    prefetched: Option<u32>,
+    previous_multiply: Option<MulInfo>,
     pub trace: Option<Trace>,
 }
 
@@ -54,6 +89,11 @@ impl Vm {
         allow_smul: bool,
         trace_size: Option<usize>,
     ) -> Self {
+        assert!(
+            !cores.is_empty(),
+            "CPU must have at least one execution unit"
+        );
+        bus.validate_topology(cores.len());
         let trace = trace_size.map(|max_size| Trace {
             entries: Vec::with_capacity(max_size.min(1024 * 1024)),
             max_size,
@@ -66,10 +106,10 @@ impl Vm {
             halted: false,
             cores,
             allow_smul,
-            sch_addr: 0,
-            sch_mode: SchMode::Idle,
-            sch_reg: 0,
-            sch_value: 0,
+            pipeline: Pipeline::Execute,
+            request: BusRequest::Read { address: 0 },
+            prefetched: None,
+            previous_multiply: None,
             trace,
         }
     }
@@ -92,38 +132,119 @@ impl Vm {
         }
     }
 
-    #[inline(always)]
-    fn handle_sch_mem(&mut self) {
-        match self.sch_mode {
-            SchMode::Load => {
-                let val = self.bus.read(self.sch_addr);
-                self.write_reg(self.sch_reg, val);
-            }
-            SchMode::Store => {
-                self.bus.write(self.sch_addr, self.sch_value);
-            }
-            SchMode::Idle => {}
+    pub fn state(&self) -> ExecutionState {
+        if self.halted {
+            return ExecutionState::Halted;
         }
-        self.sch_mode = SchMode::Idle;
+        match self.pipeline {
+            Pipeline::Execute => ExecutionState::Execute,
+            Pipeline::Load { .. } => ExecutionState::Load,
+            Pipeline::Store { .. } => ExecutionState::Store,
+        }
+    }
+
+    pub fn registers(&self) -> [u32; 32] {
+        std::array::from_fn(|index| self.read_reg(index as u8))
+    }
+
+    /// Restore register contents from a hardware snapshot; r0 remains fixed.
+    pub fn initialize_registers(&mut self, registers: [u32; 32]) {
+        for (index, value) in registers.into_iter().enumerate() {
+            self.write_reg(index as u8, value);
+        }
     }
 
     pub fn cycle(&mut self) {
-        let core_count = self.cores.len();
-        let mut prev_mul: Option<MulInfo> = None;
-        for i in 0..core_count {
-            if self.halted {
-                break;
+        self.cycle_with_observer(|_| {});
+    }
+
+    /// Advance one native frame, observing every unit, including waits, memory
+    /// service and halted slots. No execution logic is duplicated by the observer.
+    pub fn cycle_with_observer(&mut self, mut observe: impl FnMut(SlotTrace)) {
+        self.bus.begin_frame();
+        // The physical feedback path carries the last unit's instruction and
+        // product into the first unit of the next frame (including M -> S).
+        let mut previous_multiply = self.previous_multiply.take();
+        for core in 0..self.cores.len() {
+            let request = self.request;
+            let (multiply, waited) = self.advance_slot(core, previous_multiply);
+            previous_multiply = multiply;
+            observe(SlotTrace {
+                core,
+                pc: self.ip as u16,
+                state: self.state(),
+                flags: ((self.flags & 3) << 2) | ((self.flags >> 2) & 3),
+                request,
+                waited,
+            });
+        }
+        self.previous_multiply = previous_multiply;
+        self.bus.end_frame();
+    }
+
+    fn advance_slot(
+        &mut self,
+        core: usize,
+        previous_multiply: Option<MulInfo>,
+    ) -> (Option<MulInfo>, bool) {
+        let response = self.bus.transact(core, self.cores.len(), self.request);
+        if response == BusResponse::Wait {
+            return (None, true);
+        }
+        if self.halted {
+            return (None, false);
+        }
+        match self.pipeline {
+            Pipeline::Load { register } => {
+                let BusResponse::Read(value) = response else {
+                    unreachable!("load service must receive a read response")
+                };
+                self.write_reg(register, value);
+                self.pipeline = Pipeline::Execute;
+                self.request = BusRequest::Read {
+                    address: self.ip as u16,
+                };
+                (None, false)
             }
-            prev_mul = self.exec_instruction(i, prev_mul);
+            Pipeline::Store { address, value } => {
+                let BusResponse::Read(instruction) = response else {
+                    unreachable!("store service must receive the prefetched instruction")
+                };
+                // Fetch BEFORE the write reaches RAM. Keep this instruction
+                // through bus waits, even if the store modifies its RAM cell.
+                self.prefetched = Some(instruction);
+                self.pipeline = Pipeline::Execute;
+                self.request = BusRequest::Write { address, value };
+                (None, false)
+            }
+            Pipeline::Execute => {
+                let instruction = match self.prefetched.take() {
+                    Some(instruction) => instruction,
+                    None => {
+                        let BusResponse::Read(instruction) = response else {
+                            unreachable!("instruction fetch must receive a read response")
+                        };
+                        instruction
+                    }
+                };
+                let multiply = self.exec_instruction(core, instruction, previous_multiply);
+                if !matches!(self.pipeline, Pipeline::Load { .. }) {
+                    self.request = BusRequest::Read {
+                        address: self.ip as u16,
+                    };
+                }
+                (multiply, false)
+            }
         }
     }
 
-    fn exec_instruction(&mut self, core_idx: usize, prev_mul: Option<MulInfo>) -> Option<MulInfo> {
+    fn exec_instruction(
+        &mut self,
+        core_idx: usize,
+        instruction: u32,
+        prev_mul: Option<MulInfo>,
+    ) -> Option<MulInfo> {
         self.ip &= 0xFFFF;
-
-        // Fetch instruction before applying pending memory ops (store writes are delayed by 1 fetch)
-        let instruction = self.bus.read(self.ip as u16);
-        self.handle_sch_mem();
 
         // Decode fields
         let moi = instruction >> 31;
@@ -159,6 +280,27 @@ impl Vm {
 
         let core_type = self.cores[core_idx];
         let update = moi != 0;
+        // The ISA leaves carry/overflow unspecified for these operations, but
+        // R316 still exposes its parallel adder's outputs. Preserve that native
+        // behavior, including the previous carry input for odd opcodes.
+        let incidental_flags = if update && matches!(loi, 0 | 3 | 8 | 9 | 11 | 12) {
+            let mut flags = self.flags;
+            let carry = loi & 1 != 0 && get_flag(flags, 2);
+            if loi & 2 == 0 {
+                sbb(u32::from(ssrc), trace_psrc, &mut flags, carry, true);
+            } else {
+                adc(
+                    trace_psrc,
+                    u32::from(ssrc),
+                    &mut flags,
+                    u8::from(carry),
+                    true,
+                );
+            }
+            Some(flags & 0b1100)
+        } else {
+            None
+        };
         let mut skip_ip_inc = false;
         let mut executed_mul: Option<MulInfo> = None;
 
@@ -233,8 +375,6 @@ impl Vm {
             14 => {
                 // mul (moi=0) / muls (moi=1, M-core only)
                 let psrc = self.read_reg(psrcreg);
-                let p_val = alu_word_limit(psrc) as u16;
-                let s_val = ssrc;
                 let can_mul = if moi == 0 {
                     match core_type {
                         CoreType::M => true,
@@ -242,12 +382,8 @@ impl Vm {
                             if !self.allow_smul {
                                 false
                             } else {
-                                let operands_match = prev_mul
-                                    .map(|m| m.p_val == p_val && m.s_val == s_val)
-                                    .unwrap_or(false);
-                                let dest_conflict =
-                                    destreg == psrcreg || (soii == 0 && destreg == ssrc_reg);
-                                operands_match && !dest_conflict
+                                prev_mul
+                                    .is_some_and(|previous| previous.permits_secondary(instruction))
                             }
                         }
                         CoreType::F => false,
@@ -264,7 +400,7 @@ impl Vm {
                     let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                     self.write_reg(destreg, result);
                     if core_type == CoreType::M {
-                        executed_mul = Some(MulInfo { p_val, s_val });
+                        executed_mul = Some(MulInfo { instruction });
                     }
                 } else {
                     skip_ip_inc = true;
@@ -275,8 +411,6 @@ impl Vm {
                 let psrc = self.read_reg(psrcreg);
                 let can_mul = core_type == CoreType::M;
                 if can_mul {
-                    let p_val = alu_word_limit(psrc) as u16;
-                    let s_val = ssrc;
                     let result = if moi == 0 {
                         mulh(psrc, ssrc as u32)
                     } else {
@@ -284,7 +418,7 @@ impl Vm {
                     };
                     let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                     self.write_reg(destreg, result);
-                    executed_mul = Some(MulInfo { p_val, s_val });
+                    executed_mul = Some(MulInfo { instruction });
                 } else {
                     skip_ip_inc = true;
                 }
@@ -292,7 +426,10 @@ impl Vm {
             1 => {
                 // jmp
                 let next_ip = self.ip.wrapping_add(1) & 0xFFFF;
-                self.write_reg(destreg, next_ip);
+                // As in the physical ALU, JMP preserves the primary register's
+                // upper half, even though its index also encodes the condition.
+                let upper = self.read_reg(psrcreg) & 0xFFFF_0000;
+                self.write_reg(destreg, upper | next_ip);
                 if eval_condition(self.flags, condindex)
                     && (!sync || core_idx != self.cores.len() - 1)
                 {
@@ -301,18 +438,15 @@ impl Vm {
                 }
             }
             2 => {
-                // ld (scheduled for next handle_sch_mem)
-                self.sch_mode = SchMode::Load;
-                self.sch_addr =
-                    (alu_word_limit(self.read_reg(psrcreg)) + alu_word_limit(ssrc as u32)) as u16;
-                self.sch_reg = destreg;
+                let address = (self.read_reg(psrcreg) as u16).wrapping_add(ssrc);
+                self.pipeline = Pipeline::Load { register: destreg };
+                self.request = BusRequest::Read { address };
             }
             10 => {
-                // st (scheduled for next handle_sch_mem)
-                self.sch_mode = SchMode::Store;
-                self.sch_addr =
-                    (alu_word_limit(self.read_reg(psrcreg)) + alu_word_limit(ssrc as u32)) as u16;
-                self.sch_value = self.read_reg(destreg);
+                self.pipeline = Pipeline::Store {
+                    address: (self.read_reg(psrcreg) as u16).wrapping_add(ssrc),
+                    value: self.read_reg(destreg),
+                };
             }
             0 => {
                 // mov (moi=0) / movf (moi=1)
@@ -339,6 +473,9 @@ impl Vm {
             _ => {} // unreachable: loi is 4 bits, all 16 values covered
         }
 
+        if let Some(flags) = incidental_flags {
+            self.flags = (self.flags & 0b0011) | flags;
+        }
         if !skip_ip_inc {
             self.ip = (self.ip + 1) & 0xFFFF;
         }
@@ -385,7 +522,7 @@ mod tests {
         vm.bus.ram[0] = sync_jmp;
         vm.bus.ram[1] = hlt;
         vm.cycle();
-        assert_eq!(vm.read_reg(1), 1);
+        assert_eq!(vm.read_reg(1), 0x2000_0001);
         assert_eq!(vm.ip, 1);
 
         // Two cores: sync jump should jump on core 0, then core 1 halts.
@@ -394,12 +531,12 @@ mod tests {
         vm.bus.ram[2] = hlt;
         vm.cycle();
         assert!(vm.halted);
-        assert_eq!(vm.read_reg(1), 1);
+        assert_eq!(vm.read_reg(1), 0x2000_0001);
         assert_eq!(vm.ip, 3);
     }
 
     #[test]
-    fn test_logical_flags_do_not_clobber_cf_of() {
+    fn logical_flags_match_the_native_parallel_adder() {
         let mut vm = make_vm(vec![CoreType::M]);
         vm.flags = 0b1100; // Cf and Of set
         vm.write_reg(1, 0x00FF);
@@ -407,7 +544,9 @@ mod tests {
         let and_inst = encode(1, 0, 3, 1, 12, 2);
         vm.bus.ram[0] = and_inst;
         vm.cycle();
-        assert_eq!(vm.flags & 0b1100, 0b1100);
+        // The circuit subtracts 0x00ff from 0x0f0f alongside the AND: no
+        // carry or overflow. These bits are unspecified by the abstract ISA.
+        assert_eq!(vm.flags & 0b1100, 0);
     }
 
     #[test]
@@ -426,6 +565,60 @@ mod tests {
         let expected = (0x1234u32 * 0x00FFu32) & 0xFFFF;
         assert_eq!(vm.read_reg(7) & 0xFFFF, expected);
         assert_eq!(vm.ip, 2);
+    }
+
+    #[test]
+    fn secondary_multiply_can_follow_the_last_m_unit_across_a_frame() {
+        let mut vm = make_vm(vec![CoreType::S, CoreType::M]);
+        vm.write_reg(5, 5);
+        vm.write_reg(6, 6);
+        vm.bus.ram[0] = encode(0, 0, 4, 5, 15, 6);
+        vm.bus.ram[1] = encode(0, 0, 7, 5, 14, 6);
+        vm.bus.ram[2] = encode(0, 0, 0, 0, 13, 0);
+        vm.cycle();
+        assert_eq!(vm.ip, 1);
+        vm.cycle();
+        assert!(vm.halted);
+        assert_eq!(vm.read_reg(7), 30);
+    }
+
+    #[test]
+    fn secondary_multiply_may_write_its_own_input() {
+        let mut vm = make_vm(vec![CoreType::M, CoreType::S]);
+        vm.write_reg(5, 5);
+        vm.write_reg(6, 6);
+        vm.bus.ram[0] = encode(0, 0, 4, 5, 15, 6);
+        vm.bus.ram[1] = encode(0, 0, 5, 5, 14, 6);
+        vm.cycle();
+        assert_eq!(vm.read_reg(5), 30);
+        assert_eq!(vm.ip, 2);
+    }
+
+    #[test]
+    fn secondary_multiply_requires_identical_operand_encodings() {
+        let previous = MulInfo {
+            instruction: encode(0, 0, 4, 5, 15, 6),
+        };
+        assert!(previous.permits_secondary(encode(0, 0, 5, 5, 14, 6)));
+        assert!(!previous.permits_secondary(encode(0, 0, 7, 8, 14, 6)));
+        assert!(!previous.permits_secondary(encode(0, 0, 7, 5, 14, 8)));
+        assert!(!previous.permits_secondary(encode(0, 1, 7, 5, 14, 6)));
+        // Bits unused by register addressing are still compared by the circuit.
+        assert!(!previous.permits_secondary(encode(0, 0, 7, 5, 14, 38)));
+    }
+
+    #[test]
+    fn secondary_multiply_rejects_previous_destination_aliases() {
+        for destination in [5, 6] {
+            let previous = MulInfo {
+                instruction: encode(0, 0, destination, 5, 15, 6),
+            };
+            assert!(!previous.permits_secondary(encode(0, 0, 7, 5, 14, 6)));
+        }
+        let previous = MulInfo {
+            instruction: encode(0, 1, 6, 5, 15, 6),
+        };
+        assert!(previous.permits_secondary(encode(0, 1, 7, 5, 14, 6)));
     }
 
     #[test]

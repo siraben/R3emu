@@ -22,6 +22,61 @@ pub const COLOR_TABLE: [[u8; 3]; 16] = [
     [0xFF, 0xFF, 0xFF], // 15 white
 ];
 
+/// Packed ranges preserve endpoint order, unlike Rust's ascending ranges.
+#[derive(Clone, Copy)]
+pub(crate) struct DirectedRange {
+    first: u8,
+    last: u8,
+}
+
+impl DirectedRange {
+    fn new(value: u16) -> Self {
+        Self {
+            first: (value & 31) as u8,
+            last: ((value >> 5) & 31) as u8,
+        }
+    }
+
+    fn advance(self, position: u8) -> u8 {
+        // The physical mask generator saturates indices at its 29th bit.
+        if self.first.min(28) > self.last.min(28) {
+            position.wrapping_sub(1) & 31
+        } else {
+            position.wrapping_add(1) & 31
+        }
+    }
+
+    fn mask(self) -> u32 {
+        let low = self.first.min(self.last).min(28);
+        let high = self.first.max(self.last).min(28);
+        ((1 << (high + 1)) - 1) & !((1 << low) - 1)
+    }
+}
+
+fn coordinates(row_oriented: bool, primary: u8, secondary: u8) -> (u8, u8) {
+    if row_oriented {
+        (primary, secondary)
+    } else {
+        (secondary, primary)
+    }
+}
+
+/// Immutable work emitted by the controller and applied by the display later.
+pub(crate) enum RenderOperation {
+    Scroll {
+        row_oriented: bool,
+        secondary: DirectedRange,
+        mask: u32,
+        glyph: [u8; 8],
+        colors: u8,
+    },
+    Pixel {
+        column: u8,
+        row: u8,
+        color: u8,
+    },
+}
+
 pub struct Terminal {
     pub charsnh: u8,
     pub charsnv: u8,
@@ -34,8 +89,8 @@ pub struct Terminal {
     pub cursor: u16,
     pub nlchar: u8,
     pub scrollmask: u32,
-    pub char0even: u32,
-    pub char0odd: u32,
+    pub char0_right: u32,
+    pub char0_left: u32,
     pub mirror_stdout: bool,
 }
 
@@ -50,10 +105,10 @@ impl Terminal {
             hrange: 0,
             vrange: 0,
             cursor: 0,
-            nlchar: b'\n',
+            nlchar: 0,
             scrollmask: 0,
-            char0even: 0,
-            char0odd: 0,
+            char0_right: 0xDEAD_BEEF,
+            char0_left: 0xDEAD_BEEF,
             mirror_stdout: false,
         }
     }
@@ -84,17 +139,64 @@ impl Terminal {
         }
     }
 
-    pub fn set_char(&mut self, fcolor: u8, bcolor: u8, charindex: u8, column: u8, row: u8) {
-        let ci = if charindex > 127 { 0 } else { charindex };
-        for y in 0u8..8 {
-            for x in 0u8..8 {
-                let lit = (FONT_8X8[ci as usize][y as usize] >> x) & 1 != 0;
-                let color = if lit { fcolor } else { bcolor };
+    pub fn set_char(&mut self, fcolor: u8, bcolor: u8, index: u8, column: u8, row: u8) {
+        self.paint_glyph(fcolor, bcolor, self.glyph(index), column, row);
+    }
+
+    fn glyph(&self, index: u8) -> [u8; 8] {
+        if index != 0 {
+            return FONT_8X8[index as usize];
+        }
+        // R316 v2 packs left/right halves in column order 0,2,1,3, bottom-to-top,
+        // with inverted polarity. The manual's even/odd names are inaccurate;
+        // all 64 register-bit positions are verified against the native circuit.
+        std::array::from_fn(|y| {
+            let mut row = 0;
+            for x in 0..8 {
+                let columns = if x < 4 {
+                    self.char0_left
+                } else {
+                    self.char0_right
+                };
+                let byte = (x % 4) / 2 + (x % 2) * 2;
+                if columns & (1 << (byte * 8 + 7 - y)) == 0 {
+                    row |= 1 << x;
+                }
+            }
+            row
+        })
+    }
+
+    fn paint_glyph(&mut self, foreground: u8, background: u8, glyph: [u8; 8], column: u8, row: u8) {
+        for (y, bits) in glyph.into_iter().enumerate() {
+            for x in 0..8 {
+                let color = if bits & (1 << x) != 0 {
+                    foreground
+                } else {
+                    background
+                };
                 self.set_pix(
-                    x as u32 + column as u32 * 8,
-                    y as u32 + row as u32 * 8,
-                    color,
+                    x + u32::from(column) * 8,
+                    y as u32 + u32::from(row) * 8,
+                    color & 15,
                 );
+            }
+        }
+    }
+
+    pub(crate) fn render(&mut self, operation: RenderOperation) {
+        match operation {
+            RenderOperation::Scroll {
+                row_oriented,
+                secondary,
+                mask,
+                glyph,
+                colors,
+            } => {
+                self.scroll_region(row_oriented, secondary, mask, glyph, colors);
+            }
+            RenderOperation::Pixel { column, row, color } => {
+                self.set_pix(u32::from(column), u32::from(row), color);
             }
         }
     }
@@ -121,115 +223,186 @@ impl Terminal {
         self.set_pix(column, row, color_index);
     }
 
-    /// Scroll-print I/O handler.
-    /// `val` = value written, `offset` = address offset from I/O base (0..=0x3F).
-    /// The offset bits encode control flags.
-    pub fn scroll_print(&mut self, val: u32, offset: u16) {
-        let nlchar_flag = (offset >> 5) & 1 != 0;
-        let tmscroll = (offset >> 4) & 1 != 0;
-        // bit 3 unused
-        let roprint = (offset >> 2) & 1 != 0;
-        let cfdata = (offset >> 1) & 1 != 0;
-        let etmode = offset & 1 != 0;
-
-        let mut column = (self.cursor & 0b11111) as u8;
-        let mut row = ((self.cursor >> 5) & 0b11111) as u8;
-
-        let (prange, srange) = if roprint {
-            (self.hrange, self.vrange)
-        } else {
-            (self.vrange, self.hrange)
-        };
-
-        let pend = ((prange >> 5) & 0b11111) as u8;
-        let pstart = (prange & 0b11111) as u8;
-        let send = ((srange >> 5) & 0b11111) as u8;
-        let sstart = (srange & 0b11111) as u8;
-
-        let forecolor = if !cfdata {
-            self.colors & 0b1111
-        } else {
-            ((val >> 8) & 0b1111) as u8
-        };
-        let backcolor = if !cfdata {
-            (self.colors >> 4) & 0b1111
-        } else {
-            ((val >> 12) & 0b1111) as u8
-        };
-        let charindex = (val & 0xFF) as u8;
-
-        // Map primary/secondary to column/row
-        let mut pval = if roprint { column } else { row };
-        let mut sval = if roprint { row } else { column };
-
-        // Newline character handling
-        if nlchar_flag && charindex == self.nlchar {
-            pval = pend.wrapping_add(1);
+    /// Render a complete scrollprint synchronously.
+    ///
+    /// Automatic scrolling has two rendering steps. The frame-driven bus must
+    /// schedule those separately; this convenience method completes both.
+    pub fn scroll_print(&mut self, value: u32, offset: u16) {
+        let (operation, retry) = self.plan_scroll_print(value, offset);
+        if let Some(operation) = operation {
+            self.render(operation);
         }
-
-        if etmode {
-            // Character print mode
-            if pval > pend {
-                pval = pstart;
-                sval = sval.wrapping_add(1);
+        if retry {
+            let (operation, _) = self.plan_scroll_print(value, offset);
+            if let Some(operation) = operation {
+                self.render(operation);
             }
-            if sval > send {
-                if tmscroll {
-                    // Scroll: copy lines up
-                    for y in sstart..=send {
-                        for x in pstart..=pend {
-                            self.copy_char_pix(x, y.wrapping_add(1), x, y);
-                        }
+        }
+    }
+
+    /// Advance the controller without changing visible pixels. A true retry
+    /// requests the second frame of an automatic scroll.
+    pub(crate) fn plan_scroll_print(
+        &mut self,
+        value: u32,
+        offset: u16,
+    ) -> (Option<RenderOperation>, bool) {
+        let terminal_mode = offset & 1 != 0;
+        let row_oriented = offset & 4 != 0;
+        let masked = offset & 8 != 0;
+        let auto_scroll = offset & 16 != 0;
+        let character = value as u8;
+        let newline = offset & 32 != 0 && character == self.nlchar;
+        let colors = if offset & 2 != 0 {
+            (value >> 8) as u8
+        } else {
+            self.colors
+        };
+        let (primary, secondary) = if row_oriented {
+            (
+                DirectedRange::new(self.hrange),
+                DirectedRange::new(self.vrange),
+            )
+        } else {
+            (
+                DirectedRange::new(self.vrange),
+                DirectedRange::new(self.hrange),
+            )
+        };
+        let column = (self.cursor & 31) as u8;
+        let row = ((self.cursor >> 5) & 31) as u8;
+        let (mut p, mut s) = coordinates(row_oriented, column, row);
+        let wrap = p == primary.advance(primary.last) || newline;
+        let mut entire_range = !terminal_mode;
+        let mut retry = false;
+        let mut print = true;
+        let mut glyph = character;
+
+        if wrap {
+            p = primary.first;
+            let old_s = s;
+            s = secondary.advance(s);
+            if old_s == secondary.last {
+                if auto_scroll {
+                    s = secondary.last;
+                    glyph = self.nlchar;
+                    if terminal_mode {
+                        entire_range = true;
+                        retry = !newline;
                     }
-                    // Fill last line
-                    for x in pstart..=pend {
-                        self.set_char(forecolor, backcolor, self.nlchar, x, send);
-                    }
-                    sval = sval.wrapping_sub(1);
                 } else {
-                    sval = sstart;
+                    s = secondary.first;
+                    if newline && terminal_mode {
+                        print = false;
+                    }
                 }
-            }
-
-            if !(nlchar_flag && charindex == self.nlchar) {
-                // Write character at current position
-                let (col, rw) = if roprint { (pval, sval) } else { (sval, pval) };
-                self.set_char(forecolor, backcolor, charindex, col, rw);
-                pval = pval.wrapping_add(1);
-                if self.mirror_stdout {
-                    let _ = io::stdout().write_all(&[charindex]);
-                }
-            } else if self.mirror_stdout {
-                let _ = io::stdout().write_all(b"\n");
-            }
-        } else {
-            // Scroll-only mode
-            for y in sstart..send {
-                for x in pstart..=pend {
-                    self.copy_char_pix(x, y.wrapping_add(1), x, y);
-                }
-            }
-            // Fill last line with the character
-            for x in pstart..=pend {
-                self.set_char(forecolor, backcolor, charindex, x, send);
             }
         }
 
-        // Write back cursor
-        if roprint {
-            column = pval;
-            row = sval;
+        let range = if entire_range {
+            secondary
         } else {
-            row = pval;
-            column = sval;
+            DirectedRange { first: s, last: s }
+        };
+        let mask = if masked {
+            self.scrollmask & 0x1FFF_FFFF
+        } else if entire_range {
+            primary.mask()
+        } else {
+            DirectedRange { first: p, last: p }.mask()
+        };
+        let operation = print.then(|| RenderOperation::Scroll {
+            row_oriented,
+            secondary: range,
+            mask,
+            glyph: self.glyph(glyph),
+            colors,
+        });
+
+        if !newline && !retry {
+            p = primary.advance(p);
         }
-        self.cursor = column as u16 + ((row as u16) << 5);
+        if terminal_mode {
+            let (column, row) = coordinates(row_oriented, p, s);
+            self.cursor = u16::from(column) | (u16::from(row) << 5);
+        }
+        if self.mirror_stdout && terminal_mode && !retry {
+            let byte = if newline { b'\n' } else { character };
+            let _ = io::stdout().write_all(&[byte]);
+        }
+        (operation, retry)
+    }
+
+    fn scroll_region(
+        &mut self,
+        row_oriented: bool,
+        secondary: DirectedRange,
+        mask: u32,
+        glyph: [u8; 8],
+        colors: u8,
+    ) {
+        // Copy toward the vacated edge, never overwriting a source before it is
+        // read. Swapping both coordinates handles column-oriented scrolling.
+        for p in 0..29 {
+            if mask & (1 << p) == 0 {
+                continue;
+            }
+            let mut s = secondary.first;
+            while s != secondary.last {
+                let next = secondary.advance(s);
+                let (sx, sy) = coordinates(row_oriented, p, next);
+                let (dx, dy) = coordinates(row_oriented, p, s);
+                self.copy_char_pix(sx, sy, dx, dy);
+                s = next;
+            }
+            let (column, row) = coordinates(row_oriented, p, secondary.last);
+            self.paint_glyph(colors & 15, colors >> 4, glyph, column, row);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn programmable_character_maps_each_bit_to_its_column_and_row() {
+        for column in 0..8 {
+            for row in 0..8 {
+                let mut terminal = Terminal::new(1, 1);
+                terminal.char0_left = u32::MAX;
+                terminal.char0_right = u32::MAX;
+                let byte = [0, 2, 1, 3][column as usize % 4];
+                let bit = 1 << (byte * 8 + 7 - row);
+                if column < 4 {
+                    terminal.char0_left &= !bit;
+                } else {
+                    terminal.char0_right &= !bit;
+                }
+                terminal.set_char(15, 3, 0, 0, 0);
+                for y in 0..8 {
+                    for x in 0..8 {
+                        let expected = if (x, y) == (column, row) { 15 } else { 3 };
+                        assert_eq!(terminal.get_pix(x, y), expected);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn upper_character_rom_and_control_placeholders_are_not_blank() {
+        let mut terminal = Terminal::new(1, 1);
+        for index in [1, 9, 128, 160, 255] {
+            terminal.set_char(15, 0, index, 0, 0);
+            for y in 0..8 {
+                for x in 0..8 {
+                    let lit = (x / 2 + y / 2) % 2 == 0;
+                    assert_eq!(terminal.get_pix(x, y), if lit { 15 } else { 0 });
+                }
+            }
+        }
+    }
 
     #[test]
     fn out_of_bounds_pixels_do_not_wrap_to_next_row() {

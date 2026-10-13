@@ -50,7 +50,16 @@ fn haskell_roms_boot_to_keyboard_wait_and_accept_input() {
         assert!(!vm.halted);
         assert!((wait_ip..wait_ip + 3).contains(&vm.ip));
         vm.bus.keyboard.queue_keypresses([b'\n']);
-        vm.cycle();
-        assert!(!(wait_ip..wait_ip + 3).contains(&vm.ip));
+        // Input is serviced only on the last unit; the branch inspecting the
+        // loaded byte may not execute until the following frame.
+        let mut resumed = false;
+        for _ in 0..4 {
+            vm.cycle();
+            if !(wait_ip..wait_ip + 3).contains(&vm.ip) {
+                resumed = true;
+                break;
+            }
+        }
+        assert!(resumed, "keyboard input did not release the polling loop");
     }
 }

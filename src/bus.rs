@@ -1,8 +1,46 @@
+use std::collections::VecDeque;
+
 use crate::alu::{sanitize_read, sanitize_write};
 use crate::keyboard::Keyboard;
-use crate::terminal::Terminal;
+use crate::terminal::{RenderOperation, Terminal};
 
 const IO_BASE: u16 = 0x9F80;
+
+/// Memory control lines entering an execution unit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BusRequest {
+    Read { address: u16 },
+    Write { address: u16, value: u32 },
+}
+
+impl BusRequest {
+    pub fn address(self) -> u16 {
+        match self {
+            Self::Read { address } | Self::Write { address, .. } => address,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BusResponse {
+    Read(u32),
+    Written,
+    Wait,
+}
+
+/// A peripheral is connected to a physical unit, not to every CPU instruction.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TerminalPort {
+    #[default]
+    Last,
+    Unit(usize),
+    Disconnected,
+}
+
+struct ScheduledRender {
+    frame: u64,
+    operation: RenderOperation,
+}
 
 pub struct Bus {
     pub ram: Vec<u32>,
@@ -13,6 +51,12 @@ pub struct Bus {
     pub terminal: Terminal,
     pub keyboard: Keyboard,
     pub has_pixplot: bool,
+    terminal_port: TerminalPort,
+    terminate_unmapped: bool,
+    frame: u64,
+    deferred_scroll: Option<(u32, u16)>,
+    terminal_busy: bool,
+    pending_render: VecDeque<ScheduledRender>,
 }
 
 impl Bus {
@@ -35,6 +79,129 @@ impl Bus {
             terminal: Terminal::new(term_cols, term_rows),
             keyboard: Keyboard::new(),
             has_pixplot,
+            terminal_port: TerminalPort::Last,
+            terminate_unmapped: true,
+            frame: 0,
+            deferred_scroll: None,
+            terminal_busy: false,
+            pending_render: VecDeque::new(),
+        }
+    }
+
+    /// Select the unit carrying the terminal's bus connector.
+    pub fn with_terminal_port(mut self, port: TerminalPort) -> Self {
+        self.terminal_port = port;
+        self
+    }
+
+    /// A conventional dummy terminator stalls unserved external accesses. Disable
+    /// it (and disconnect the terminal) to model the bare internal-memory mirrors.
+    pub fn with_termination(mut self, enabled: bool) -> Self {
+        self.terminate_unmapped = enabled;
+        self
+    }
+
+    pub(crate) fn validate_topology(&self, units: usize) {
+        if let TerminalPort::Unit(unit) = self.terminal_port {
+            assert!(unit < units, "terminal unit is outside the CPU layout");
+        }
+    }
+
+    /// Advance controller work at the start of a native simulation frame.
+    pub(crate) fn begin_frame(&mut self) {
+        self.frame += 1;
+        self.terminal_busy = self.deferred_scroll.is_some();
+        if let Some((value, offset)) = self.deferred_scroll.take() {
+            self.schedule_scroll(value, offset);
+        }
+    }
+
+    /// Display stages keep progressing even after the CPU executes HLT.
+    pub(crate) fn end_frame(&mut self) {
+        for _ in 0..self.pending_render.len() {
+            let render = self.pending_render.pop_front().expect("known queue length");
+            if render.frame <= self.frame {
+                self.terminal.render(render.operation);
+            } else {
+                self.pending_render.push_back(render);
+            }
+        }
+    }
+
+    pub fn has_pending_work(&self) -> bool {
+        self.deferred_scroll.is_some() || !self.pending_render.is_empty()
+    }
+
+    fn schedule_scroll(&mut self, value: u32, offset: u16) {
+        let (operation, retry) = self.terminal.plan_scroll_print(value, offset);
+        if let Some(operation) = operation {
+            // Measured in native AFTERSIM observations: glyph/scroll changes
+            // reach the screen two frames after their bus acknowledgement.
+            self.pending_render.push_back(ScheduledRender {
+                frame: self.frame + 2,
+                operation,
+            });
+        }
+        if retry {
+            self.deferred_scroll = Some((value, offset));
+        }
+    }
+
+    fn accept_terminal_write(&mut self, address: u16, value: u32) {
+        match address {
+            0x9F80..=0x9FBF => self.schedule_scroll(value, address - IO_BASE),
+            0x9FE0..=0x9FFF if self.has_pixplot => {
+                // Native overlap probes put pixel and glyph visibility two
+                // frames after acknowledgement, including a deferred print.
+                self.pending_render.push_back(ScheduledRender {
+                    frame: self.frame + 2,
+                    operation: RenderOperation::Pixel {
+                        column: value as u8,
+                        row: (value >> 8) as u8,
+                        color: (address & 15) as u8,
+                    },
+                });
+            }
+            _ => self.write_io(address, value),
+        }
+    }
+
+    pub fn is_external(&self, address: u16) -> bool {
+        u32::from(address) >= u32::from(self.mem_p2rows) * u32::from(self.row_size)
+    }
+
+    /// Service one unit's incoming control lines. Wait leaves the transaction
+    /// untouched so the following unit can retry, without duplicated effects.
+    pub fn transact(&mut self, unit: usize, units: usize, request: BusRequest) -> BusResponse {
+        let address = request.address();
+        let connected = match self.terminal_port {
+            TerminalPort::Last => unit + 1 == units,
+            TerminalPort::Unit(port) => unit == port,
+            TerminalPort::Disconnected => false,
+        };
+        let external = self.is_external(address);
+        if external && connected && (IO_BASE..IO_BASE + 0x80).contains(&address) {
+            return match request {
+                BusRequest::Read { .. } => BusResponse::Read(self.read(address)),
+                BusRequest::Write { .. } if self.terminal_busy => BusResponse::Wait,
+                BusRequest::Write { value, .. } => {
+                    self.accept_terminal_write(address, sanitize_write(value));
+                    BusResponse::Written
+                }
+            };
+        }
+        if external && self.terminate_unmapped {
+            return BusResponse::Wait;
+        }
+        let (index, writable) = self.map_addr(address);
+        match request {
+            BusRequest::Read { .. } => BusResponse::Read(sanitize_read(self.ram[index])),
+            BusRequest::Write { value, .. } => {
+                if writable {
+                    self.ram[index] = sanitize_write(value);
+                }
+                BusResponse::Written
+            }
         }
     }
 
@@ -73,7 +240,7 @@ impl Bus {
         // I/O range reads
         if (IO_BASE..IO_BASE + 0x80).contains(&addr) {
             if addr == IO_BASE {
-                return self.keyboard.get_key() as u32;
+                return 0x1000_0000 | u32::from(self.keyboard.get_key());
             }
             return 0;
         }
@@ -106,10 +273,10 @@ impl Bus {
             }
             // Terminal registers
             0x9FC0 => {
-                self.terminal.char0odd = val;
+                self.terminal.char0_left = val;
             }
             0x9FC1 => {
-                self.terminal.char0even = val;
+                self.terminal.char0_right = val;
             }
             0x9FC2 => {
                 self.terminal.hrange = val as u16;
