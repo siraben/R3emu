@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{error::ErrorKind, CommandFactory, Parser};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -35,11 +35,11 @@ struct Args {
     input: String,
 
     /// Memory rows
-    #[arg(long, default_value_t = 64)]
+    #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u8).range(1..))]
     memrows: u8,
 
     /// Number of cores
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u8).range(1..))]
     cores: u8,
 
     /// Target FPS
@@ -55,15 +55,15 @@ struct Args {
     tracesize: usize,
 
     /// Terminal character columns
-    #[arg(long = "term-cols", default_value_t = 12)]
+    #[arg(long = "term-cols", default_value_t = 12, value_parser = clap::value_parser!(u8).range(1..))]
     term_cols: u8,
 
     /// Terminal character rows
-    #[arg(long = "term-rows", default_value_t = 8)]
+    #[arg(long = "term-rows", default_value_t = 8, value_parser = clap::value_parser!(u8).range(1..))]
     term_rows: u8,
 
     /// Memory row size in words
-    #[arg(long, default_value_t = 128)]
+    #[arg(long, default_value_t = 128, value_parser = clap::value_parser!(u16).range(1..))]
     rowsize: u16,
 
     /// Dump memory after emulation
@@ -132,6 +132,9 @@ fn calc_mem_color(value: u32) -> [u8; 3] {
 
 fn main() {
     let args = Args::parse();
+    if u16::from(args.memrows).checked_mul(args.rowsize).is_none() {
+        Args::command().error(ErrorKind::ValueValidation, "memory must fit in 65535 words").exit();
+    }
 
     eprintln!("R3 emulator");
     eprintln!("Written by Justus Wolff in very late 2025-2026");
