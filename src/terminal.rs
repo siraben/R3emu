@@ -84,14 +84,7 @@ impl Terminal {
         }
     }
 
-    pub fn set_char(
-        &mut self,
-        fcolor: u8,
-        bcolor: u8,
-        charindex: u8,
-        column: u8,
-        row: u8,
-    ) {
+    pub fn set_char(&mut self, fcolor: u8, bcolor: u8, charindex: u8, column: u8, row: u8) {
         let ci = if charindex > 127 { 0 } else { charindex };
         for y in 0u8..8 {
             for x in 0u8..8 {
@@ -200,11 +193,7 @@ impl Terminal {
 
             if !(nlchar_flag && charindex == self.nlchar) {
                 // Write character at current position
-                let (col, rw) = if roprint {
-                    (pval, sval)
-                } else {
-                    (sval, pval)
-                };
+                let (col, rw) = if roprint { (pval, sval) } else { (sval, pval) };
                 self.set_char(forecolor, backcolor, charindex, col, rw);
                 pval = pval.wrapping_add(1);
                 if self.mirror_stdout {

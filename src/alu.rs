@@ -9,13 +9,21 @@ pub fn is_phys_zero(w: u32) -> bool {
 /// Sanitize a value being written: physically zero values gain bit 29.
 #[inline(always)]
 pub fn sanitize_write(w: u32) -> u32 {
-    if is_phys_zero(w) { w | 0x20000000 } else { w }
+    if is_phys_zero(w) {
+        w | 0x20000000
+    } else {
+        w
+    }
 }
 
 /// Sanitize a value being read: physically zero values read as 0x0000001F.
 #[inline(always)]
 pub fn sanitize_read(w: u32) -> u32 {
-    if is_phys_zero(w) { 0x0000001F } else { w }
+    if is_phys_zero(w) {
+        0x0000001F
+    } else {
+        w
+    }
 }
 
 /// Mask a word to the lower 16 bits (ALU word width).
@@ -194,7 +202,11 @@ pub fn eval_condition(flags: u8, index: usize) -> bool {
         7 => cf,              // carry
         _ => unreachable!(),
     };
-    if index < 8 { base } else { !base }
+    if index < 8 {
+        base
+    } else {
+        !base
+    }
 }
 
 #[cfg(test)]
@@ -217,9 +229,9 @@ mod tests {
         let mut flags: u8 = 0;
         let result = add(0xFFFF, 1, &mut flags, true);
         assert_eq!(result, 0);
-        assert!(get_flag(flags, 0));  // zf
+        assert!(get_flag(flags, 0)); // zf
         assert!(!get_flag(flags, 1)); // sf
-        assert!(get_flag(flags, 2));  // cf
+        assert!(get_flag(flags, 2)); // cf
         assert!(!get_flag(flags, 3)); // of
     }
 
@@ -231,8 +243,8 @@ mod tests {
         assert_eq!(result, 0b0111111111111111);
         assert!(!get_flag(flags, 0)); // zf
         assert!(!get_flag(flags, 1)); // sf
-        assert!(get_flag(flags, 2));  // cf
-        assert!(get_flag(flags, 3));  // of
+        assert!(get_flag(flags, 2)); // cf
+        assert!(get_flag(flags, 3)); // of
     }
 
     #[test]
@@ -254,7 +266,7 @@ mod tests {
         assert_eq!(result, 1);
         assert!(!get_flag(flags, 0)); // zf
         assert!(!get_flag(flags, 1)); // sf
-        assert!(get_flag(flags, 2));  // cf
+        assert!(get_flag(flags, 2)); // cf
         assert!(!get_flag(flags, 3)); // of
     }
 
@@ -265,7 +277,7 @@ mod tests {
         let result = add(2, (!4u32).wrapping_add(1), &mut flags, true);
         assert_eq!(result, 65534);
         assert!(!get_flag(flags, 0)); // zf
-        assert!(get_flag(flags, 1));  // sf
+        assert!(get_flag(flags, 1)); // sf
         assert!(!get_flag(flags, 2)); // cf
         assert!(!get_flag(flags, 3)); // of
     }
@@ -275,9 +287,9 @@ mod tests {
         let mut flags: u8 = 0;
         let result = add(1, 65535, &mut flags, true);
         assert_eq!(result, 0);
-        assert!(get_flag(flags, 0));  // zf
+        assert!(get_flag(flags, 0)); // zf
         assert!(!get_flag(flags, 1)); // sf
-        assert!(get_flag(flags, 2));  // cf
+        assert!(get_flag(flags, 2)); // cf
         assert!(!get_flag(flags, 3)); // of
     }
 
@@ -287,8 +299,8 @@ mod tests {
         let result = sub(1, 4, &mut flags, true);
         assert_eq!(result, 0b1111111111111101);
         assert!(!get_flag(flags, 0)); // zf
-        assert!(get_flag(flags, 1));  // sf
-        assert!(get_flag(flags, 2));  // cf (borrow)
+        assert!(get_flag(flags, 1)); // sf
+        assert!(get_flag(flags, 2)); // cf (borrow)
         assert!(!get_flag(flags, 3)); // of
     }
 

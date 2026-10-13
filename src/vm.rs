@@ -77,7 +77,11 @@ impl Vm {
     #[inline(always)]
     fn read_reg(&self, index: u8) -> u32 {
         let i = (index & 31) as usize;
-        if i == 0 { 0x20000000 } else { self.regs[i] }
+        if i == 0 {
+            0x20000000
+        } else {
+            self.regs[i]
+        }
     }
 
     #[inline(always)]
@@ -170,13 +174,7 @@ impl Vm {
                 // sbb
                 let psrc = self.read_reg(psrcreg);
                 let carry_in = get_flag(self.flags, 2);
-                let result = sbb(
-                    ssrc as u32,
-                    psrc,
-                    &mut self.flags,
-                    carry_in,
-                    update,
-                );
+                let result = sbb(ssrc as u32, psrc, &mut self.flags, carry_in, update);
                 let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
@@ -191,13 +189,7 @@ impl Vm {
                 // adc
                 let psrc = self.read_reg(psrcreg);
                 let carry_in = if get_flag(self.flags, 2) { 1 } else { 0 };
-                let result = adc(
-                    psrc,
-                    ssrc as u32,
-                    &mut self.flags,
-                    carry_in,
-                    update,
-                );
+                let result = adc(psrc, ssrc as u32, &mut self.flags, carry_in, update);
                 let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
             }
@@ -220,19 +212,9 @@ impl Vm {
                 let psrc = self.read_reg(psrcreg);
                 let is_shr = (raw_ssrc >> 15) != 0;
                 let result = if !is_shr {
-                    shl(
-                        psrc,
-                        (ssrc as u32) & 0b1111,
-                        &mut self.flags,
-                        update,
-                    )
+                    shl(psrc, (ssrc as u32) & 0b1111, &mut self.flags, update)
                 } else {
-                    shr(
-                        psrc,
-                        (ssrc as u32) & 0b1111,
-                        &mut self.flags,
-                        update,
-                    )
+                    shr(psrc, (ssrc as u32) & 0b1111, &mut self.flags, update)
                 };
                 let result = (psrc & 0xFFFF0000) | (result & 0xFFFF);
                 self.write_reg(destreg, result);
@@ -263,8 +245,8 @@ impl Vm {
                                 let operands_match = prev_mul
                                     .map(|m| m.p_val == p_val && m.s_val == s_val)
                                     .unwrap_or(false);
-                                let dest_conflict = destreg == psrcreg
-                                    || (soii == 0 && destreg == ssrc_reg);
+                                let dest_conflict =
+                                    destreg == psrcreg || (soii == 0 && destreg == ssrc_reg);
                                 operands_match && !dest_conflict
                             }
                         }
@@ -369,14 +351,7 @@ mod tests {
     use super::*;
     use crate::bus::Bus;
 
-    fn encode(
-        moi: u32,
-        soii: u32,
-        dest: u8,
-        psrc_or_cond: u8,
-        op_lsb: u8,
-        ssrc: u16,
-    ) -> u32 {
+    fn encode(moi: u32, soii: u32, dest: u8, psrc_or_cond: u8, op_lsb: u8, ssrc: u16) -> u32 {
         (moi << 31)
             | (soii << 30)
             | ((dest as u32) << 25)

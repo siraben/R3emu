@@ -16,16 +16,15 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(
-        rows: u8,
-        row_size: u16,
-        term_cols: u8,
-        term_rows: u8,
-        has_pixplot: bool,
-    ) -> Self {
+    pub fn new(rows: u8, row_size: u16, term_cols: u8, term_rows: u8, has_pixplot: bool) -> Self {
         let mem_rows = rows as u16;
-        assert!(rows > 0 && row_size > 0, "memory dimensions must be nonzero");
-        let mem_size = mem_rows.checked_mul(row_size).expect("memory exceeds 65535 words");
+        assert!(
+            rows > 0 && row_size > 0,
+            "memory dimensions must be nonzero"
+        );
+        let mem_size = mem_rows
+            .checked_mul(row_size)
+            .expect("memory exceeds 65535 words");
         let mem_p2rows = mem_rows.next_power_of_two();
         Bus {
             ram: vec![0; mem_size as usize],

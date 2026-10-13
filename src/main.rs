@@ -126,12 +126,16 @@ fn calc_mem_color(value: u32) -> [u8; 3] {
 fn main() {
     let args = Args::parse();
     if u16::from(args.memrows).checked_mul(args.rowsize).is_none() {
-        Args::command().error(ErrorKind::ValueValidation, "memory must fit in 65535 words").exit();
+        Args::command()
+            .error(ErrorKind::ValueValidation, "memory must fit in 65535 words")
+            .exit();
     }
 
     eprintln!("R3 emulator");
     eprintln!("Written by Justus Wolff in very late 2025-2026");
-    eprintln!("With help from LBPHacker, to fix alot of arithmetic bugs, who also made the original R3");
+    eprintln!(
+        "With help from LBPHacker, to fix alot of arithmetic bugs, who also made the original R3"
+    );
     eprintln!("Also credit to siraben due to finding bugs and patching them by implementing haskell for the R3.");
 
     // Read input binary
